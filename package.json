@@ -4,7 +4,9 @@
   "description": "A-MEM agentic memory backend for OpenClaw — TypeScript rewrite",
   "main": "dist/index.js",
   "openclaw": {
-    "extensions": ["./dist/index.js"]
+    "extensions": [
+      "./dist/index.js"
+    ]
   },
   "scripts": {
     "build": "tsup src/index.ts --format cjs --out-dir dist",
@@ -13,6 +15,7 @@
   "dependencies": {
     "@anthropic-ai/sdk": "^0.52.0",
     "@huggingface/transformers": "^3.5.0",
+    "@qdrant/js-client-rest": "^1.18.0",
     "chromadb": "^1.9.2"
   },
   "devDependencies": {
