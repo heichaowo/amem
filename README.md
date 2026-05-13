@@ -166,7 +166,8 @@ Qdrant collection: amem_notes
 If you have existing memories in ChromaDB (`~/.openclaw/amem_db/`):
 
 ```bash
-conda activate amem
+# Requires a Python environment with chromadb installed
+pip install chromadb
 python scripts/migrate-chroma-to-qdrant.py
 ```
 
