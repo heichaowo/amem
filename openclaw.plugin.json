@@ -1,8 +1,8 @@
 {
-  "id": "amem-plugin",
-  "name": "Memory (A-MEM)",
-  "description": "A-MEM agentic memory backend for OpenClaw — local ChromaDB with LLM-driven note construction and link generation. No external API keys required.",
-  "version": "0.1.0",
+  "id": "openclaw-amem",
+  "name": "Memory (A-MEM v2)",
+  "description": "A-MEM agentic memory backend for OpenClaw — Qdrant + Transformers.js, no Python required. Note construction, link generation, memory evolution.",
+  "version": "0.2.0",
   "kind": "memory",
   "contracts": {
     "tools": [
@@ -19,6 +19,11 @@
         "type": "number",
         "default": 5,
         "description": "Maximum number of memories to retrieve."
+      },
+      "agentId": {
+        "type": "string",
+        "default": "main",
+        "description": "Agent namespace for memory isolation."
       }
     },
     "required": []
