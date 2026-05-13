@@ -1,0 +1,26 @@
+{
+  "id": "amem-plugin",
+  "name": "Memory (A-MEM)",
+  "description": "A-MEM agentic memory backend for OpenClaw — local ChromaDB with LLM-driven note construction and link generation. No external API keys required.",
+  "version": "0.1.0",
+  "kind": "memory",
+  "contracts": {
+    "tools": [
+      "memory_search",
+      "memory_add",
+      "memory_list"
+    ]
+  },
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "topK": {
+        "type": "number",
+        "default": 5,
+        "description": "Maximum number of memories to retrieve."
+      }
+    },
+    "required": []
+  }
+}

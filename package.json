@@ -1,0 +1,9 @@
+{
+  "name": "amem-plugin",
+  "version": "0.1.0",
+  "description": "A-MEM agentic memory backend for OpenClaw",
+  "main": "dist/index.js",
+  "openclaw": {
+    "extensions": ["./dist/index.js"]
+  }
+}
