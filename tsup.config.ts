@@ -5,5 +5,8 @@ export default defineConfig({
   format: ['cjs'],
   clean: true,
   bundle: true,
-  noExternal: ['chromadb', '@huggingface/transformers', '@anthropic-ai/sdk'],
+  // @huggingface/transformers uses dynamic imports for ONNX backends
+  // bundling it breaks backend detection — keep as external
+  external: ['@huggingface/transformers', 'onnxruntime-node'],
+  noExternal: ['chromadb', '@anthropic-ai/sdk', 'uuid'],
 })
