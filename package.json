@@ -1,9 +1,22 @@
 {
   "name": "amem-plugin",
-  "version": "0.1.0",
-  "description": "A-MEM agentic memory backend for OpenClaw",
+  "version": "0.2.0",
+  "description": "A-MEM agentic memory backend for OpenClaw — TypeScript rewrite",
   "main": "dist/index.js",
   "openclaw": {
     "extensions": ["./dist/index.js"]
+  },
+  "scripts": {
+    "build": "tsup src/index.ts --format cjs --out-dir dist",
+    "dev": "tsup src/index.ts --format cjs --watch"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.52.0",
+    "@huggingface/transformers": "^3.5.0",
+    "chromadb": "^1.9.2"
+  },
+  "devDependencies": {
+    "tsup": "^8.4.0",
+    "typescript": "^5.8.0"
   }
 }
