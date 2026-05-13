@@ -1,117 +1,24 @@
 /**
  * amem-plugin v2 — A-MEM agentic memory backend for OpenClaw
- * TypeScript rewrite — Story 0: stub (calls Python daemon via HTTP)
+ * TypeScript rewrite — Story 5: native TS implementation (no Python daemon)
  *
- * TODO: Stories 1-4 will replace the HTTP calls with native TS implementation
+ * Depends on:
+ *   - src/memory.ts  (addMemory, searchMemory, listMemories)
+ *   - src/storage.ts (Qdrant)
+ *   - src/embedding.ts (Transformers.js)
+ *   - src/llm.ts (Anthropic via LLM proxy)
  */
 
-import * as http from 'http'
 import * as os from 'os'
 import * as path from 'path'
+import { addMemory, searchMemory, listMemories } from './memory.js'
+import { ensureCollection } from './storage.js'
 
-// ── Config ───────────────────────────────────────────────────────────────────
+// ── Config ────────────────────────────────────────────────────────────────────
 let _config: Record<string, unknown> = {}
 
-const DAEMON_URL = 'http://127.0.0.1:9885'
-
-// ── HTTP helpers (calls existing Python daemon) ───────────────────────────────
-function postJson(endpoint: string, body: Record<string, unknown>): Promise<unknown> {
-  return new Promise((resolve, reject) => {
-    const payload = JSON.stringify(body)
-    const url = new URL(`${DAEMON_URL}${endpoint}`)
-    const options = {
-      hostname: url.hostname,
-      port: Number(url.port),
-      path: url.pathname,
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Content-Length': Buffer.byteLength(payload),
-      },
-    }
-    const req = http.request(options, (res) => {
-      let data = ''
-      res.on('data', (chunk) => (data += chunk))
-      res.on('end', () => {
-        try { resolve(JSON.parse(data)) } catch { resolve({ ok: false, error: data }) }
-      })
-    })
-    req.on('error', reject)
-    req.setTimeout(120000, () => { req.destroy(); reject(new Error('amem HTTP timeout')) })
-    req.write(payload)
-    req.end()
-  })
-}
-
-function getJson(endpoint: string): Promise<unknown> {
-  return new Promise((resolve, reject) => {
-    const url = new URL(`${DAEMON_URL}${endpoint}`)
-    const req = http.get({ hostname: url.hostname, port: Number(url.port), path: url.pathname }, (res) => {
-      let data = ''
-      res.on('data', (chunk) => (data += chunk))
-      res.on('end', () => {
-        try { resolve(JSON.parse(data)) } catch { resolve({ ok: false }) }
-      })
-    })
-    req.on('error', reject)
-  })
-}
-
-// ── Core operations (stub → Python daemon) ────────────────────────────────────
-async function addMemory(text: string): Promise<{ ok: boolean; error?: string }> {
-  const res = (await postJson('/add', { text })) as { ok: boolean; error?: string }
-  return res
-}
-
-interface SearchResult {
-  id: string
-  memory: string
-  score: number
-  context?: string
-  tags?: string
-}
-
-async function searchMemory(query: string, topK = 5): Promise<SearchResult[]> {
-  const res = (await postJson('/search', { query, top_k: topK })) as {
-    ok: boolean
-    output?: string
-    results?: SearchResult[]
-  }
-  if (!res.ok) return []
-  // daemon returns text output — parse it
-  if (res.results) return res.results.slice(0, topK)
-  if (res.output) return parseSearchOutput(res.output).slice(0, topK)
-  return []
-}
-
-async function listMemories(): Promise<{ count: number }> {
-  const res = (await getJson('/health')) as { ok: boolean; notes?: number }
-  return { count: res.notes ?? 0 }
-}
-
-// ── Parse search output text ─────────────────────────────────────────────────
-function parseSearchOutput(output: string): SearchResult[] {
-  const results: SearchResult[] = []
-  const blockRe = /\[(\d+)\]\s+(\S+)\s+\(similarity:\s*([\d.]+)[^)]*\)/g
-  let match: RegExpExecArray | null
-  const positions: { index: number; id: string; score: number }[] = []
-  while ((match = blockRe.exec(output)) !== null) {
-    positions.push({ index: match.index, id: match[2], score: parseFloat(match[3]) })
-  }
-  for (let i = 0; i < positions.length; i++) {
-    const start = positions[i].index
-    const end = i + 1 < positions.length ? positions[i + 1].index : output.length
-    const block = output.slice(start, end)
-    const entry: SearchResult = { id: positions[i].id, score: positions[i].score, memory: '' }
-    const contentMatch = block.match(/Content\s*:\s*(.+)/)
-    const contextMatch = block.match(/Context\s*:\s*(.+)/)
-    const tagsMatch = block.match(/Tags\s*:\s*(.+)/)
-    if (contentMatch) entry.memory = contentMatch[1].trim()
-    if (contextMatch) entry.context = contextMatch[1].trim()
-    if (tagsMatch) entry.tags = tagsMatch[1].trim()
-    if (entry.memory) results.push(entry)
-  }
-  return results
+function getAgentId(cfg: Record<string, unknown>): string {
+  return (cfg.agentId as string) || 'main'
 }
 
 // ── OpenClaw plugin registration ──────────────────────────────────────────────
@@ -124,9 +31,13 @@ function register(api: {
 }) {
   const logger = api.logger
   _config = (api.config && api.config()) || {}
-  const dbPath = (_config.dbPath as string) || path.join(os.homedir(), '.openclaw', 'amem_db')
+  const agentId = getAgentId(_config)
+  const dbPath = path.join(os.homedir(), '.openclaw', 'amem_db')
 
-  logger.info('amem-plugin v2: registered (stub → Python daemon)')
+  logger.info(`amem-plugin v2: registered (native TS, Qdrant, agent_id=${agentId})`)
+
+  // Pre-warm: ensure Qdrant collection exists
+  ensureCollection().catch((e) => logger.warn(`amem-plugin: ensureCollection failed — ${e.message}`))
 
   // ── registerMemoryCapability ─────────────────────────────────────────────
   if (typeof api.registerMemoryCapability === 'function') {
@@ -142,7 +53,7 @@ function register(api: {
               manager: {
                 status() {
                   return {
-                    backend: 'amem-chromadb',
+                    backend: 'amem-qdrant',
                     files: 0,
                     chunks: 0,
                     dirty: false,
@@ -151,7 +62,15 @@ function register(api: {
                 },
                 async search(query: string, opts: { limit?: number; topK?: number } = {}) {
                   try {
-                    return await searchMemory(query, opts.limit || opts.topK || 5)
+                    const topK = opts.limit || opts.topK || 5
+                    const results = await searchMemory(query, topK, agentId)
+                    return results.map((r) => ({
+                      id: r.id,
+                      memory: r.content,
+                      score: r.similarity,
+                      context: r.context,
+                      tags: r.tags.join(', '),
+                    }))
                   } catch (err) {
                     logger.warn(`amem-plugin: search failed — ${(err as Error).message}`)
                     return []
@@ -159,7 +78,7 @@ function register(api: {
                 },
                 async add(text: string) {
                   try {
-                    await addMemory(text)
+                    await addMemory(text, agentId)
                     return { ok: true }
                   } catch (err) {
                     logger.warn(`amem-plugin: add failed — ${(err as Error).message}`)
@@ -176,7 +95,7 @@ function register(api: {
           }
         },
         resolveMemoryBackendConfig(_params: unknown) {
-          return { backend: 'amem-chromadb', baseUrl: '', userId: 'default' }
+          return { backend: 'amem-qdrant', baseUrl: '', userId: agentId }
         },
         async closeAllMemorySearchManagers() {},
       },
@@ -191,7 +110,7 @@ function register(api: {
       {
         name: 'memory_search',
         label: 'Memory Search (A-MEM)',
-        description: 'Search long-term memories stored in A-MEM / ChromaDB.',
+        description: 'Search long-term memories stored in A-MEM / Qdrant.',
         parameters: {
           type: 'object',
           properties: {
@@ -204,13 +123,13 @@ function register(api: {
           const { query, limit = 5 } = params
           const start = Date.now()
           try {
-            const results = await searchMemory(query, limit)
+            const results = await searchMemory(query, limit, agentId)
             logger.info(`amem-plugin: memory_search "${query}" → ${results.length} results (${Date.now() - start}ms)`)
             if (!results.length) {
               return { content: [{ type: 'text', text: 'No relevant memories found.' }], details: { count: 0 } }
             }
             const text = results
-              .map((r, i) => `${i + 1}. ${r.memory} (score: ${(r.score * 100).toFixed(0)}%, id: ${r.id})`)
+              .map((r, i) => `${i + 1}. ${r.content} (score: ${(r.similarity * 100).toFixed(0)}%, id: ${r.id})`)
               .join('\n')
             return {
               content: [{ type: 'text', text: `Found ${results.length} memories:\n\n${text}` }],
@@ -245,11 +164,11 @@ function register(api: {
           const { text } = params
           const start = Date.now()
           try {
-            await addMemory(text)
-            logger.info(`amem-plugin: memory_add OK (${Date.now() - start}ms)`)
+            const id = await addMemory(text, agentId)
+            logger.info(`amem-plugin: memory_add OK id=${id} (${Date.now() - start}ms)`)
             return {
               content: [{ type: 'text', text: 'Memory saved successfully.' }],
-              details: { ok: true },
+              details: { ok: true, id },
             }
           } catch (err) {
             logger.warn(`amem-plugin: memory_add error — ${(err as Error).message}`)
@@ -268,7 +187,7 @@ function register(api: {
       {
         name: 'memory_list',
         label: 'Memory List (A-MEM)',
-        description: 'List memory count in A-MEM.',
+        description: 'Show total memory count in A-MEM.',
         parameters: {
           type: 'object',
           properties: {},
@@ -276,7 +195,7 @@ function register(api: {
         },
         async execute(_toolCallId: string, _params: Record<string, never>) {
           try {
-            const { count } = await listMemories()
+            const { count } = await listMemories(agentId)
             return {
               content: [{ type: 'text', text: `Total memories: ${count}` }],
               details: { count },
@@ -292,7 +211,7 @@ function register(api: {
       { optional: true }
     )
 
-    logger.info('amem-plugin: memory_search, memory_add, memory_list tools registered')
+    logger.info('amem-plugin v2: memory_search, memory_add, memory_list tools registered')
   } else {
     logger.warn('amem-plugin: api.registerTool not available — tools not registered')
   }
@@ -301,11 +220,11 @@ function register(api: {
   if (typeof api.registerService === 'function') {
     api.registerService({
       id: 'amem-plugin',
-      start() { logger.info(`amem-plugin: initialized (backend: amem-chromadb, stateDir: ${dbPath})`) },
-      stop() { logger.info('amem-plugin: stopped') },
+      start() { logger.info(`amem-plugin v2: started (backend: amem-qdrant, agentId: ${agentId})`) },
+      stop() { logger.info('amem-plugin v2: stopped') },
     })
   } else {
-    logger.info('amem-plugin: initialized (backend: amem-chromadb)')
+    logger.info(`amem-plugin v2: initialized (backend: amem-qdrant, agentId: ${agentId})`)
   }
 }
 
