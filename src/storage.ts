@@ -23,7 +23,7 @@ export interface QueryResult {
 }
 
 // ── Config ────────────────────────────────────────────────────────────────────
-const QDRANT_URL = process.env.AMEM_QDRANT_URL || 'http://localhost:6333'
+const QDRANT_URL = 'http://localhost:6333'
 const COLLECTION = 'amem_notes'
 const VECTOR_DIM = 384
 

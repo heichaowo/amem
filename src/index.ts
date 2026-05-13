@@ -24,13 +24,13 @@ function getAgentId(cfg: Record<string, unknown>): string {
 // ── OpenClaw plugin registration ──────────────────────────────────────────────
 function register(api: {
   logger: { info: (msg: string) => void; warn: (msg: string) => void }
-  config?: () => Record<string, unknown>
+  pluginConfig?: Record<string, unknown>
   registerMemoryCapability?: (cap: unknown) => void
   registerTool?: (tool: unknown, opts?: unknown) => void
   registerService?: (svc: unknown) => void
 }) {
   const logger = api.logger
-  _config = (api.config && api.config()) || {}
+  _config = (api.pluginConfig as Record<string, unknown>) || {}
   const agentId = getAgentId(_config)
   const dbPath = path.join(os.homedir(), '.openclaw', 'amem_db')
 
@@ -228,4 +228,4 @@ function register(api: {
   }
 }
 
-module.exports = { register }
+export { register }
