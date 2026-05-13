@@ -34,10 +34,10 @@ function register(api: {
   const agentId = getAgentId(_config)
   const dbPath = path.join(os.homedir(), '.openclaw', 'amem_db')
 
-  logger.info(`amem-plugin v2: registered (native TS, Qdrant, agent_id=${agentId})`)
+  logger.info(`openclaw-amem: registered (native TS, Qdrant, agent_id=${agentId})`)
 
   // Pre-warm: ensure Qdrant collection exists
-  ensureCollection().catch((e) => logger.warn(`amem-plugin: ensureCollection failed — ${e.message}`))
+  ensureCollection().catch((e) => logger.warn(`openclaw-amem: ensureCollection failed — ${e.message}`))
 
   // ── registerMemoryCapability ─────────────────────────────────────────────
   if (typeof api.registerMemoryCapability === 'function') {
@@ -72,7 +72,7 @@ function register(api: {
                       tags: r.tags.join(', '),
                     }))
                   } catch (err) {
-                    logger.warn(`amem-plugin: search failed — ${(err as Error).message}`)
+                    logger.warn(`openclaw-amem: search failed — ${(err as Error).message}`)
                     return []
                   }
                 },
@@ -81,7 +81,7 @@ function register(api: {
                     await addMemory(text, agentId)
                     return { ok: true }
                   } catch (err) {
-                    logger.warn(`amem-plugin: add failed — ${(err as Error).message}`)
+                    logger.warn(`openclaw-amem: add failed — ${(err as Error).message}`)
                     return { ok: false, error: (err as Error).message }
                   }
                 },
@@ -90,7 +90,7 @@ function register(api: {
               },
             }
           } catch (err) {
-            logger.warn(`amem-plugin: getMemorySearchManager failed — ${(err as Error).message}`)
+            logger.warn(`openclaw-amem: getMemorySearchManager failed — ${(err as Error).message}`)
             return { manager: null, error: `amem backend unavailable: ${String(err)}` }
           }
         },
@@ -101,7 +101,7 @@ function register(api: {
       },
     })
   } else {
-    logger.warn('amem-plugin: api.registerMemoryCapability not available')
+    logger.warn('openclaw-amem: api.registerMemoryCapability not available')
   }
 
   // ── registerTool: memory_search ──────────────────────────────────────────
@@ -124,7 +124,7 @@ function register(api: {
           const start = Date.now()
           try {
             const results = await searchMemory(query, limit, agentId)
-            logger.info(`amem-plugin: memory_search "${query}" → ${results.length} results (${Date.now() - start}ms)`)
+            logger.info(`openclaw-amem: memory_search "${query}" → ${results.length} results (${Date.now() - start}ms)`)
             if (!results.length) {
               return { content: [{ type: 'text', text: 'No relevant memories found.' }], details: { count: 0 } }
             }
@@ -136,7 +136,7 @@ function register(api: {
               details: { count: results.length, memories: results },
             }
           } catch (err) {
-            logger.warn(`amem-plugin: memory_search error — ${(err as Error).message}`)
+            logger.warn(`openclaw-amem: memory_search error — ${(err as Error).message}`)
             return {
               content: [{ type: 'text', text: `Memory search failed: ${(err as Error).message}` }],
               details: { error: String(err) },
@@ -165,13 +165,13 @@ function register(api: {
           const start = Date.now()
           try {
             const id = await addMemory(text, agentId)
-            logger.info(`amem-plugin: memory_add OK id=${id} (${Date.now() - start}ms)`)
+            logger.info(`openclaw-amem: memory_add OK id=${id} (${Date.now() - start}ms)`)
             return {
               content: [{ type: 'text', text: 'Memory saved successfully.' }],
               details: { ok: true, id },
             }
           } catch (err) {
-            logger.warn(`amem-plugin: memory_add error — ${(err as Error).message}`)
+            logger.warn(`openclaw-amem: memory_add error — ${(err as Error).message}`)
             return {
               content: [{ type: 'text', text: `Memory add failed: ${(err as Error).message}` }],
               details: { ok: false, error: String(err) },
@@ -211,20 +211,20 @@ function register(api: {
       { optional: true }
     )
 
-    logger.info('amem-plugin v2: memory_search, memory_add, memory_list tools registered')
+    logger.info('openclaw-amem: memory_search, memory_add, memory_list tools registered')
   } else {
-    logger.warn('amem-plugin: api.registerTool not available — tools not registered')
+    logger.warn('openclaw-amem: api.registerTool not available — tools not registered')
   }
 
   // ── registerService ──────────────────────────────────────────────────────
   if (typeof api.registerService === 'function') {
     api.registerService({
       id: 'amem-plugin',
-      start() { logger.info(`amem-plugin v2: started (backend: amem-qdrant, agentId: ${agentId})`) },
-      stop() { logger.info('amem-plugin v2: stopped') },
+      start() { logger.info(`openclaw-amem: started (backend: amem-qdrant, agentId: ${agentId})`) },
+      stop() { logger.info('openclaw-amem: stopped') },
     })
   } else {
-    logger.info(`amem-plugin v2: initialized (backend: amem-qdrant, agentId: ${agentId})`)
+    logger.info(`openclaw-amem: initialized (backend: amem-qdrant, agentId: ${agentId})`)
   }
 }
 
