@@ -108,7 +108,7 @@ Original note: ${content}
 Newly linked notes:
 ${linkedStr}`
 
-  const raw = await llmCall(prompt, 300)
+  const raw = await llmCall(prompt, 500)
   if (!raw) return { tags: null, context: null }
 
   try {
