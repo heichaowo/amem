@@ -44,35 +44,70 @@ function stripFences(raw: string): string {
 }
 
 // ── Note construction ─────────────────────────────────────────────────────────
+
+/**
+ * Valid category values (Story 13-E).
+ * "General" is the fallback for anything that doesn't fit a specific bucket.
+ */
+export type NoteCategory =
+  | 'Technical'
+  | 'Business'
+  | 'Personal'
+  | 'Project'
+  | 'Research'
+  | 'System'
+  | 'General'
+
 export interface NoteStructure {
   keywords: string[]
   tags: string[]
   context: string
+  /** Story 13-E: coarse-grained category */
+  category: NoteCategory
 }
+
+const VALID_CATEGORIES = new Set<string>([
+  'Technical', 'Business', 'Personal', 'Project', 'Research', 'System', 'General',
+])
 
 export async function llmConstructNote(content: string): Promise<NoteStructure> {
   const prompt = `Analyze the following text and respond with JSON only (no markdown, no explanation):
 {
   "keywords": ["keyword1", "keyword2", ...],  // 3-7 key terms
   "tags": ["tag1", "tag2", ...],              // 2-4 category tags
-  "context": "one sentence summary"
+  "context": "one sentence summary",
+  "category": "Technical|Business|Personal|Project|Research|System|General"
 }
+
+Category guide:
+- Technical: code, tools, configuration, APIs, debugging
+- Business: company, finance, compliance, contracts, invoices
+- Personal: personal state, habits, preferences, emotions
+- Project: project progress, decisions, milestones
+- Research: research, literature, evaluation, comparison
+- System: system services, monitoring, operations
+- General: anything that does not fit the above
 
 Text: ${content}`
 
-  const raw = await llmCall(prompt, 300)
-  if (!raw) return { keywords: [], tags: [], context: '' }
+  const raw = await llmCall(prompt, 350)
+  if (!raw) return { keywords: [], tags: [], context: '', category: 'General' }
 
   try {
     const data = JSON.parse(stripFences(raw))
+    const rawCategory = typeof data.category === 'string' ? data.category : 'General'
+    const category: NoteCategory = VALID_CATEGORIES.has(rawCategory)
+      ? (rawCategory as NoteCategory)
+      : 'General'
     return {
       keywords: Array.isArray(data.keywords) ? data.keywords : [],
       tags: Array.isArray(data.tags) ? data.tags : [],
       context: typeof data.context === 'string' ? data.context : '',
+      category,
     }
   } catch (e) {
     console.error(`[amem] Note construction parse failed: ${(e as Error).message}`)
-    return { keywords: [], tags: [], context: '' }
+    return { keywords: [], tags: [], context: '', category: 'General' }
   }
 }
 

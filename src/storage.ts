@@ -5,6 +5,17 @@
  */
 
 // ── Types ─────────────────────────────────────────────────────────────────────
+
+/** One entry in a note's evolution history (Story 13-B) */
+export interface EvolutionEntry {
+  triggeredBy: string   // ID of the new note that caused this evolution
+  triggeredAt: string   // ISO timestamp
+  oldContext: string
+  newContext: string
+  oldTags: string[]
+  newTags: string[]
+}
+
 export interface MemoryNote {
   id: string
   content: string
@@ -16,6 +27,13 @@ export interface MemoryNote {
   timestamp: string
   agent_id: string    // "main" | "subagent-xxx" | "shared"
   hash: string        // md5(content), for exact-match dedup
+  // ── Story 13-A: retrieval heat tracking ──────────────────────────────────
+  retrieval_count: number   // times this note has been returned by queryByEmbedding
+  last_accessed: string     // ISO timestamp of most recent retrieval
+  // ── Story 13-B: evolution history ────────────────────────────────────────
+  evolution_history: EvolutionEntry[]  // log of tag/context changes
+  // ── Story 13-E: coarse category ──────────────────────────────────────────
+  category: string    // e.g. "Technical" | "Business" | … | "General"
 }
 
 export interface QueryResult {
@@ -83,6 +101,13 @@ function noteToPoint(note: MemoryNote) {
       timestamp: note.timestamp,
       agent_id: note.agent_id,
       hash: note.hash,
+      // 13-A
+      retrieval_count: note.retrieval_count ?? 0,
+      last_accessed: note.last_accessed || note.timestamp,
+      // 13-B: stored as JSON string (Qdrant payload can't handle nested array-of-objects)
+      evolution_history: JSON.stringify(note.evolution_history ?? []),
+      // 13-E
+      category: note.category || 'General',
     },
   }
 }
@@ -93,6 +118,22 @@ function pointToNote(point: {
   vector?: number[]
 }): MemoryNote {
   const p = point.payload
+  const timestamp = (p.timestamp as string) || ''
+
+  // 13-B: deserialize evolution_history from JSON string
+  let evolutionHistory: EvolutionEntry[] = []
+  try {
+    const raw = p.evolution_history
+    if (typeof raw === 'string' && raw.length > 0) {
+      evolutionHistory = JSON.parse(raw) as EvolutionEntry[]
+    } else if (Array.isArray(raw)) {
+      // handle legacy case where it was stored as array
+      evolutionHistory = raw as EvolutionEntry[]
+    }
+  } catch {
+    evolutionHistory = []
+  }
+
   return {
     id: String(point.id),
     content: (p.content as string) || '',
@@ -100,10 +141,17 @@ function pointToNote(point: {
     tags: (p.tags as string[]) || [],
     context: (p.context as string) || '',
     links: (p.links as string[]) || [],
-    timestamp: (p.timestamp as string) || '',
+    timestamp,
     agent_id: (p.agent_id as string) || 'main',
     embedding: point.vector || [],
     hash: (p.hash as string) || '',
+    // 13-A
+    retrieval_count: typeof p.retrieval_count === 'number' ? p.retrieval_count : 0,
+    last_accessed: (p.last_accessed as string) || timestamp,
+    // 13-B
+    evolution_history: evolutionHistory,
+    // 13-E
+    category: (p.category as string) || 'General',
   }
 }
 
@@ -211,10 +259,52 @@ export async function queryByEmbedding(
     filter: agentFilter(agentId),
   })) as Array<{ id: string; score: number; payload: Record<string, unknown>; vector: number[] }>
 
-  return result.map((r) => ({
+  const queryResults = result.map((r) => ({
     note: pointToNote(r),
     score: r.score,
   }))
+
+  // 13-A: Batch-update retrieval_count and last_accessed for all hits (non-blocking)
+  if (queryResults.length > 0) {
+    const now = new Date().toISOString()
+    const ids = queryResults.map((r) => r.note.id)
+
+    // Fire-and-forget: increment retrieval_count per-point
+    // Qdrant doesn't support atomic increment via payload patch, so we
+    // compute the new count from the in-memory note and patch it.
+    const patches = queryResults.map((r) => ({
+      id: r.note.id,
+      retrieval_count: (r.note.retrieval_count || 0) + 1,
+    }))
+
+    // We send individual patches (each has a different retrieval_count value),
+    // but group the shared last_accessed update in one bulk call.
+    Promise.all([
+      // last_accessed bulk update (same value for all)
+      qdrant('POST', `/collections/${COLLECTION}/points/payload?wait=false`, {
+        payload: { last_accessed: now },
+        points: ids,
+      }),
+      // per-note retrieval_count increments
+      ...patches.map((p) =>
+        qdrant('POST', `/collections/${COLLECTION}/points/payload?wait=false`, {
+          payload: { retrieval_count: p.retrieval_count },
+          points: [p.id],
+        }),
+      ),
+    ]).catch((err: unknown) => {
+      // Non-fatal: retrieval tracking failure must not break search
+      console.error(`[amem] retrieval tracking patch failed: ${(err as Error).message}`)
+    })
+
+    // Update in-memory note objects so callers see fresh values immediately
+    for (const r of queryResults) {
+      r.note.retrieval_count = (r.note.retrieval_count || 0) + 1
+      r.note.last_accessed = now
+    }
+  }
+
+  return queryResults
 }
 
 export async function listNotes(agentId?: string): Promise<MemoryNote[]> {

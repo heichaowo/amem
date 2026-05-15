@@ -11,7 +11,7 @@
 
 import * as os from 'os'
 import * as path from 'path'
-import { addMemory, searchMemory, listMemories } from './memory.js'
+import { addMemory, searchMemory, listMemories, mergeSimilarNotes } from './memory.js'
 import { ensureCollection, updateNoteContent, deleteNote } from './storage.js'
 import { encode } from './embedding.js'
 import { createHash } from 'crypto'
@@ -291,6 +291,16 @@ function register(api: {
           }
           // NONE: skip
         }
+
+        // 异步触发碎片合并（不阻塞主流程）
+        const today = new Date().toISOString().slice(0, 10)
+        void mergeSimilarNotes(agentId).then((merged) => {
+          if (merged > 0) {
+            logger.info(`openclaw-amem: merged ${merged} similar notes today (${today})`)
+          }
+        }).catch((e: Error) => {
+          logger.warn(`openclaw-amem: merge failed — ${e.message}`)
+        })
       } catch (e) {
         logger.warn(`openclaw-amem: agent_end CRUD hook failed — ${(e as Error).message}`)
       }

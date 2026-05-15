@@ -8,6 +8,7 @@ import { createHash } from 'crypto'
 import { encode, cosineSimilarity } from './embedding.js'
 import { addNote, getNote, updateNote, queryByEmbedding, listNotes, countNotes, findByHash, updateNoteContent, deleteNote, getNotesByDatePrefix, type MemoryNote } from './storage.js'
 import { llmConstructNote, llmShouldLink, llmEvolveNote, llmShouldMerge } from './llm.js'
+import { shouldRunEvolution } from './evo-counter.js'
 
 // ── BM25 helpers ──────────────────────────────────────────────────────────────
 function simpleTokenize(text: string): string[] {
@@ -96,10 +97,11 @@ export async function addMemory(content: string, agentId = 'main'): Promise<stri
   console.log('[add] Constructing note...')
 
   // Step 1: Note Construction
-  const { keywords, tags, context } = await llmConstructNote(content)
+  const { keywords, tags, context, category } = await llmConstructNote(content)
   console.log(`  keywords: ${keywords.join(', ')}`)
   console.log(`  tags: ${tags.join(', ')}`)
   console.log(`  context: ${context}`)
+  console.log(`  category: ${category}`)
 
   const fieldsText = buildEmbedText({ content, keywords, tags, context })
   const embedding = await encode(fieldsText)
@@ -123,6 +125,13 @@ export async function addMemory(content: string, agentId = 'main'): Promise<stri
     links: [],
     agent_id: agentId,
     hash,
+    // 13-A
+    retrieval_count: 0,
+    last_accessed: new Date().toISOString(),
+    // 13-B
+    evolution_history: [],
+    // 13-E
+    category,
   }
 
   // Save first
@@ -164,30 +173,49 @@ export async function addMemory(content: string, agentId = 'main'): Promise<stri
           }
         }
 
-        // Step 3: Memory Evolution (up to 3)
-        for (const lid of linkedIds.slice(0, 3)) {
-          const linked = await getNote(lid)
-          if (!linked) continue
+        // Step 3: Memory Evolution (up to 3) — gated by evo_threshold (Story 13-C)
+        if (shouldRunEvolution()) {
+          console.log(`  [evo] threshold reached, running evolution for ${Math.min(linkedIds.length, 3)} linked notes`)
+          for (const lid of linkedIds.slice(0, 3)) {
+            const linked = await getNote(lid)
+            if (!linked) continue
 
-          // Gather link contents (skip new note to avoid duplication)
-          const linkContents: string[] = []
-          for (const llid of linked.links.slice(0, 5)) {
-            if (llid === note.id) continue
-            const ln = await getNote(llid)
-            if (ln) linkContents.push(ln.content)
+            // Gather link contents (skip new note to avoid duplication)
+            const linkContents: string[] = []
+            for (const llid of linked.links.slice(0, 5)) {
+              if (llid === note.id) continue
+              const ln = await getNote(llid)
+              if (ln) linkContents.push(ln.content)
+            }
+            linkContents.push(content) // new note exactly once
+
+            const oldTags = [...linked.tags]
+            const oldContext = linked.context
+
+            const { tags: newTags, context: newContext } = await llmEvolveNote(linked.content, linkContents)
+            if (newTags !== null) linked.tags = newTags
+            if (newContext !== null) linked.context = newContext
+
+            if (newTags !== null || newContext !== null) {
+              // 13-B: append evolution history entry
+              linked.evolution_history = linked.evolution_history || []
+              linked.evolution_history.push({
+                triggeredBy: note.id,
+                triggeredAt: new Date().toISOString(),
+                oldContext,
+                newContext: newContext ?? oldContext,
+                oldTags,
+                newTags: newTags ?? oldTags,
+              })
+
+              // Re-compute embedding after evolution
+              linked.embedding = await encode(buildEmbedText(linked))
+              await updateNote(linked)
+              console.log(`  evolved note ${lid.slice(0, 8)}... (embedding updated)`)
+            }
           }
-          linkContents.push(content) // new note exactly once
-
-          const { tags: newTags, context: newContext } = await llmEvolveNote(linked.content, linkContents)
-          if (newTags !== null) linked.tags = newTags
-          if (newContext !== null) linked.context = newContext
-
-          if (newTags !== null || newContext !== null) {
-            // Re-compute embedding after evolution
-            linked.embedding = await encode(buildEmbedText(linked))
-            await updateNote(linked)
-            console.log(`  evolved note ${lid.slice(0, 8)}... (embedding updated)`)
-          }
+        } else {
+          console.log(`  [evo] threshold not reached, skipping evolution this round`)
         }
       }
     }
@@ -227,17 +255,26 @@ export async function searchMemory(query: string, topK = 5, agentId = 'main'): P
   const queryTokens = simpleTokenize(query)
   const bm25Ranked = bm25Score(bm25State, queryTokens).slice(0, n)
 
-  // RRF fusion
+  // RRF fusion with retrieval_count heat boost (Story 13-A)
   const merged = rrfMerge(
     embResults.map((r) => r.note.id),
     bm25Ranked.map((r) => r[0]),
   )
-  const topIds = merged.slice(0, topK).map(([id]) => id)
+
+  // Apply heat boost: retrieval_count makes frequently-retrieved notes rank higher
+  const noteMap = new Map(allNotes.map((n) => [n.id, n]))
+  const boostedMerged: [string, number][] = merged.map(([id, rrfScore]) => {
+    const note = noteMap.get(id)
+    const recencyBoost = note ? (1 + 0.05 * Math.log(1 + (note.retrieval_count || 0))) : 1
+    return [id, rrfScore * recencyBoost]
+  })
+  boostedMerged.sort((a, b) => b[1] - a[1])
+
+  const topIds = boostedMerged.slice(0, topK).map(([id]) => id)
 
   // Build result map
   const embSimMap = new Map(embResults.map((r) => [r.note.id, r.score]))
-  const noteMap = new Map(allNotes.map((n) => [n.id, n]))
-  const rrfMap = new Map(merged.map(([id, score]) => [id, score]))
+  const rrfMap = new Map(boostedMerged.map(([id, score]) => [id, score]))
 
   const results: SearchResult[] = []
   for (const id of topIds) {
@@ -263,4 +300,83 @@ export async function searchMemory(query: string, topK = 5, agentId = 'main'): P
 export async function listMemories(agentId = 'main'): Promise<{ count: number }> {
   const count = await countNotes(agentId)
   return { count }
+}
+
+// ── mergeSimilarNotes ──────────────────────────────────────────────────────────
+
+/** Sleep helper */
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
+/**
+ * Merge semantically similar notes written today.
+ * Called asynchronously from agent_end hook; failures are silent.
+ * Returns the number of notes merged (deleted).
+ */
+export async function mergeSimilarNotes(agentId: string): Promise<number> {
+  const today = new Date().toISOString().slice(0, 10) // "YYYY-MM-DD"
+  const notes = await getNotesByDatePrefix(today, agentId)
+
+  // Not enough notes to bother
+  if (notes.length < 5) return 0
+
+  // Build list of (i, j) candidate pairs with sim >= 0.80
+  // Cap at top-10 pairs to limit LLM calls
+  interface SimPair {
+    i: number
+    j: number
+    sim: number
+  }
+
+  const pairs: SimPair[] = []
+  for (let i = 0; i < notes.length; i++) {
+    for (let j = i + 1; j < notes.length; j++) {
+      if (!notes[i].embedding.length || !notes[j].embedding.length) continue
+      const sim = cosineSimilarity(notes[i].embedding, notes[j].embedding)
+      if (sim >= 0.80) {
+        pairs.push({ i, j, sim })
+      }
+    }
+  }
+
+  if (pairs.length === 0) return 0
+
+  // Sort by similarity descending, take top 10
+  pairs.sort((a, b) => b.sim - a.sim)
+  const topPairs = pairs.slice(0, 10)
+
+  // Track deleted IDs to skip stale pairs
+  const deletedIds = new Set<string>()
+  let mergedCount = 0
+
+  for (const { i, j } of topPairs) {
+    const noteA = notes[i]
+    const noteB = notes[j]
+
+    // Skip if either has already been deleted
+    if (deletedIds.has(noteA.id) || deletedIds.has(noteB.id)) continue
+
+    const result = await llmShouldMerge(noteA.content, noteB.content)
+
+    if (result.shouldMerge && result.merged) {
+      // Keep the longer note (more complete), update its content, delete the other
+      const [keepNote, dropNote] =
+        noteA.content.length >= noteB.content.length
+          ? [noteA, noteB]
+          : [noteB, noteA]
+
+      const newEmbedding = await encode(result.merged)
+      const newHash = createHash('md5').update(result.merged).digest('hex')
+      await updateNoteContent(keepNote.id, result.merged, newEmbedding, newHash)
+      await deleteNote(dropNote.id)
+      deletedIds.add(dropNote.id)
+      mergedCount++
+    }
+
+    // Rate-limit: 200ms between LLM calls
+    await sleep(200)
+  }
+
+  return mergedCount
 }
