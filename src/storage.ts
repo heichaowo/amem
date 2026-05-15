@@ -232,6 +232,13 @@ export async function listNotes(agentId?: string): Promise<MemoryNote[]> {
   return result.points.map(pointToNote)
 }
 
+export async function deleteNote(id: string): Promise<void> {
+  await ensureCollection()
+  await qdrant('POST', `/collections/${COLLECTION}/points/delete`, {
+    points: [id],
+  })
+}
+
 export async function countNotes(agentId?: string): Promise<number> {
   await ensureCollection()
   const body: Record<string, unknown> = { exact: true }

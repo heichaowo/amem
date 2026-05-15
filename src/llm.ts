@@ -89,6 +89,84 @@ Note B: ${candidateContent}`
   return raw.toLowerCase().startsWith('yes')
 }
 
+// ── CRUD Decision ────────────────────────────────────────────────────────────
+export interface MemoryOperation {
+  action: 'NEW' | 'UPDATE' | 'DELETE' | 'NONE'
+  fact: string
+  existingIdx?: number   // UPDATE/DELETE 时，对应 existingMemories 的整数下标（防幻觉）
+  reason?: string
+}
+
+export async function llmCrudDecision(
+  userText: string,
+  assistantText: string,
+  existingMemories: Array<{ idx: number; content: string }>
+): Promise<MemoryOperation[]> {
+  const memoryList = existingMemories.length > 0
+    ? existingMemories.map(m => `[${m.idx}] ${m.content}`).join('\n')
+    : '（无已有相关记忆）'
+
+  const prompt = `你是一个记忆管理 agent，负责分析对话内容并决定如何操作记忆库。
+
+## 对话内容
+
+用户：${userText.slice(0, 500)}
+助手：${assistantText.slice(0, 500)}
+
+## 已有相关记忆（用整数 idx 标识）
+
+${memoryList}
+
+## 任务
+
+分析上述对话，决定需要哪些记忆操作。只提取真正重要的长期事实（决策、偏好、账号信息、项目状态、关键洞察）。跳过闲聊、确认语、重复信息。
+
+## 操作类型
+- NEW：提取全新事实（已有记忆中没有的信息）
+- UPDATE：新信息更新了某条已有记忆，用 existingIdx 指定要更新的条目
+- DELETE：某条已有记忆已经过时或错误，用 existingIdx 指定，fact 填原内容
+- NONE：不值得记录或已有完全相同的信息
+
+## 输出格式
+
+返回 JSON 数组，每条格式：
+{"action": "NEW"|"UPDATE"|"DELETE"|"NONE", "fact": "事实内容", "existingIdx": 整数或省略, "reason": "原因（可选）"}
+
+每次最多返回 3 条操作。如果没有值得操作的内容，返回 []。
+
+只返回 JSON 数组，不要任何其他文字。示例：
+[{"action": "NEW", "fact": "Alex决定使用 React 作为前端框架", "reason": "明确的技术选型决策"}]`
+
+  try {
+    const raw = await llmCall(prompt, 400)
+    if (!raw) return []
+    const match = raw.match(/\[.*\]/s)
+    if (!match) return []
+    const parsed = JSON.parse(match[0])
+    if (!Array.isArray(parsed)) return []
+    const ops: MemoryOperation[] = []
+    for (const item of parsed) {
+      if (!item || typeof item !== 'object') continue
+      const action = item.action
+      if (!['NEW', 'UPDATE', 'DELETE', 'NONE'].includes(action)) continue
+      if (action === 'NONE') continue
+      const op: MemoryOperation = {
+        action,
+        fact: typeof item.fact === 'string' ? item.fact : '',
+        reason: typeof item.reason === 'string' ? item.reason : undefined,
+      }
+      if (typeof item.existingIdx === 'number') {
+        op.existingIdx = item.existingIdx
+      }
+      ops.push(op)
+    }
+    return ops.slice(0, 3)
+  } catch (e) {
+    console.error(`[amem] llmCrudDecision failed: ${(e as Error).message}`)
+    return []
+  }
+}
+
 // ── Note evolution ────────────────────────────────────────────────────────────
 export interface EvolvedNote {
   tags: string[] | null

@@ -12,7 +12,9 @@
 import * as os from 'os'
 import * as path from 'path'
 import { addMemory, searchMemory, listMemories } from './memory.js'
-import { ensureCollection } from './storage.js'
+import { ensureCollection, updateNoteContent, deleteNote } from './storage.js'
+import { encode } from './embedding.js'
+import { createHash } from 'crypto'
 
 // ── Config ────────────────────────────────────────────────────────────────────
 let _config: Record<string, unknown> = {}
@@ -238,36 +240,62 @@ function register(api: {
           ? lastAssistant.content
           : lastAssistant.content.filter((b: any) => b.type === 'text').map((b: any) => b.text).join(' ')
 
-        if (!userText || userText.length < 10) return
+        // ── Step 1: 规则前置过滤 ──────────────────────────────────────────────────
+        function shouldProcessTurn(text: string): boolean {
+          if (text.trim().length < 10) return false
+          const skipWords = ['好', '嗯', '明白', '明白了', '收到', 'ok', 'OK', '好的', '知道了', '了解', '谢谢', '谢']
+          const trimmed = text.trim()
+          if (skipWords.some(w => trimmed === w || trimmed === w + '。' || trimmed === w + '！')) return false
+          return true
+        }
 
-        // Ask LLM to extract memorable facts from this exchange
-        const { llmCall } = await import('./llm.js')
-        const prompt = `You are a memory extraction assistant. Given a conversation exchange, extract 0-3 important facts worth remembering long-term. Only extract genuinely important facts (decisions, preferences, project status, account info, key insights). Skip small talk and trivial content.
+        if (!userText || !shouldProcessTurn(userText)) return
 
-User: ${userText.slice(0, 500)}
-Assistant: ${assistantText.slice(0, 500)}
+        // ── Step 2: 检索 Top5 已有相关记忆 ─────────────────────────────────────────
+        const searchResults = await searchMemory(userText, 5, agentId)
+        const existingMemories = searchResults.map((r, idx) => ({
+          idx,
+          id: r.id,
+          content: r.content,
+        }))
 
-Respond with a JSON array of strings (facts to remember), or an empty array [] if nothing is worth remembering. Each fact should be a concise sentence under 150 chars. Example: ["Alex决定用 CrewAI 作为多 agent 框架", "MetaSmith 定位是 bug 修复工具，不做通用代码生成"]`
+        // ── Step 3: 调用 llmCrudDecision ────────────────────────────────────────────
+        const { llmCrudDecision } = await import('./llm.js')
+        const operations = await llmCrudDecision(
+          userText,
+          assistantText,
+          existingMemories.map(m => ({ idx: m.idx, content: m.content }))
+        )
 
-        const result = await llmCall(prompt, 300)
-        if (!result) return
+        if (!operations || operations.length === 0) return
 
-        const match = result.match(/\[.*\]/s)
-        if (!match) return
-        const facts: string[] = JSON.parse(match[0])
-        if (!Array.isArray(facts) || facts.length === 0) return
-
-        for (const fact of facts.slice(0, 3)) {
-          if (typeof fact === 'string' && fact.length > 5) {
-            await addMemory(fact, agentId)
-            logger.info(`openclaw-amem: auto-captured memory: "${fact.slice(0, 60)}..."`)
+        // ── Step 4: 执行 CRUD 操作 ───────────────────────────────────────────────
+        for (const op of operations) {
+          if (op.action === 'NEW') {
+            await addMemory(op.fact, agentId)
+            logger.info(`openclaw-amem: CRUD NEW: "${op.fact.slice(0, 60)}${op.fact.length > 60 ? '...' : ''}"` )
+          } else if (op.action === 'UPDATE' && op.existingIdx !== undefined) {
+            const target = existingMemories[op.existingIdx]
+            if (target) {
+              const newEmbedding = await encode(op.fact)
+              const hash = createHash('md5').update(op.fact).digest('hex')
+              await updateNoteContent(target.id, op.fact, newEmbedding, hash)
+              logger.info(`openclaw-amem: CRUD UPDATE id=${target.id.slice(0, 8)}: "${op.fact.slice(0, 60)}${op.fact.length > 60 ? '...' : ''}"` )
+            }
+          } else if (op.action === 'DELETE' && op.existingIdx !== undefined) {
+            const target = existingMemories[op.existingIdx]
+            if (target) {
+              await deleteNote(target.id)
+              logger.info(`openclaw-amem: CRUD DELETE id=${target.id.slice(0, 8)}: "${op.fact.slice(0, 60)}${op.fact.length > 60 ? '...' : ''}"` )
+            }
           }
+          // NONE: skip
         }
       } catch (e) {
-        logger.warn(`openclaw-amem: agent_end auto-capture failed — ${(e as Error).message}`)
+        logger.warn(`openclaw-amem: agent_end CRUD hook failed — ${(e as Error).message}`)
       }
     }, { timeoutMs: 30000 })
-    logger.info('openclaw-amem: agent_end auto-capture hook registered')
+    logger.info('openclaw-amem: agent_end CRUD decision hook registered')
   }
 
   // ── registerService ──────────────────────────────────────────────────────
