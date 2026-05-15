@@ -167,6 +167,40 @@ ${memoryList}
   }
 }
 
+// ── Merge judgment ───────────────────────────────────────────────────────────
+export async function llmShouldMerge(
+  contentA: string,
+  contentB: string,
+): Promise<{ shouldMerge: boolean; merged?: string }> {
+  const prompt = `你是一个记忆去重助手，负责判断两条记忆是否表达了本质相同的信息。
+
+记忆A：${contentA}
+记忆B：${contentB}
+
+请判断：
+- 如果两条记忆表达的是本质相同的信息（可能措辞不同、粒度不同，但核心事实一致），返回 JSON：
+  {"shouldMerge": true, "merged": "合并后的简洁表述，保留两条记忆的关键信息，比任何一条都更完整"}
+- 如果两条记忆是互补信息、不同主题、或包含不同的具体事实，返回 JSON：
+  {"shouldMerge": false}
+
+只返回 JSON，不要任何其他文字。`
+
+  const raw = await llmCall(prompt, 300)
+  if (!raw) return { shouldMerge: false }
+
+  try {
+    const data = JSON.parse(stripFences(raw))
+    if (typeof data.shouldMerge !== 'boolean') return { shouldMerge: false }
+    if (data.shouldMerge && typeof data.merged === 'string') {
+      return { shouldMerge: true, merged: data.merged }
+    }
+    return { shouldMerge: false }
+  } catch (e) {
+    console.error(`[amem] llmShouldMerge parse failed: ${(e as Error).message}`)
+    return { shouldMerge: false }
+  }
+}
+
 // ── Note evolution ────────────────────────────────────────────────────────────
 export interface EvolvedNote {
   tags: string[] | null

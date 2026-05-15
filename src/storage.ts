@@ -239,6 +239,38 @@ export async function deleteNote(id: string): Promise<void> {
   })
 }
 
+/**
+ * Fetch all notes for a given agentId whose timestamp starts with datePrefix (e.g. "2026-05-15").
+ * Qdrant does not support string prefix filters, so we scroll all agent notes and filter in memory.
+ */
+export async function getNotesByDatePrefix(
+  datePrefix: string,
+  agentId: string,
+): Promise<MemoryNote[]> {
+  await ensureCollection()
+  const body: Record<string, unknown> = {
+    filter: {
+      must: [
+        {
+          should: [
+            { key: 'agent_id', match: { value: agentId } },
+            { key: 'agent_id', match: { value: 'shared' } },
+          ],
+        },
+      ],
+    },
+    with_payload: true,
+    with_vector: true,
+    limit: 10000,
+  }
+  const result = (await qdrant('POST', `/collections/${COLLECTION}/points/scroll`, body)) as {
+    points: Array<{ id: string; payload: Record<string, unknown>; vector: number[] }>
+  }
+  return result.points
+    .map(pointToNote)
+    .filter((n) => n.timestamp.startsWith(datePrefix))
+}
+
 export async function countNotes(agentId?: string): Promise<number> {
   await ensureCollection()
   const body: Record<string, unknown> = { exact: true }

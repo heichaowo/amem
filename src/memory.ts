@@ -5,9 +5,9 @@
 
 import { v4 as uuidv4 } from 'uuid'
 import { createHash } from 'crypto'
-import { encode } from './embedding.js'
-import { addNote, getNote, updateNote, queryByEmbedding, listNotes, countNotes, findByHash, updateNoteContent, type MemoryNote } from './storage.js'
-import { llmConstructNote, llmShouldLink, llmEvolveNote } from './llm.js'
+import { encode, cosineSimilarity } from './embedding.js'
+import { addNote, getNote, updateNote, queryByEmbedding, listNotes, countNotes, findByHash, updateNoteContent, deleteNote, getNotesByDatePrefix, type MemoryNote } from './storage.js'
+import { llmConstructNote, llmShouldLink, llmEvolveNote, llmShouldMerge } from './llm.js'
 
 // ── BM25 helpers ──────────────────────────────────────────────────────────────
 function simpleTokenize(text: string): string[] {
