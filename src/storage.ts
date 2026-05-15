@@ -15,6 +15,7 @@ export interface MemoryNote {
   embedding: number[]
   timestamp: string
   agent_id: string    // "main" | "subagent-xxx" | "shared"
+  hash: string        // md5(content), for exact-match dedup
 }
 
 export interface QueryResult {
@@ -59,6 +60,11 @@ export async function ensureCollection(): Promise<void> {
       field_name: 'agent_id',
       field_schema: 'keyword',
     })
+    // Index hash for exact-match dedup
+    await qdrant('PUT', `/collections/${COLLECTION}/index`, {
+      field_name: 'hash',
+      field_schema: 'keyword',
+    })
     _collectionReady = true
   }
 }
@@ -76,6 +82,7 @@ function noteToPoint(note: MemoryNote) {
       links: note.links,
       timestamp: note.timestamp,
       agent_id: note.agent_id,
+      hash: note.hash,
     },
   }
 }
@@ -96,6 +103,7 @@ function pointToNote(point: {
     timestamp: (p.timestamp as string) || '',
     agent_id: (p.agent_id as string) || 'main',
     embedding: point.vector || [],
+    hash: (p.hash as string) || '',
   }
 }
 
@@ -134,6 +142,57 @@ export async function getNote(id: string): Promise<MemoryNote | null> {
 
 export async function updateNote(note: MemoryNote): Promise<void> {
   await addNote(note) // upsert
+}
+
+/**
+ * Find a note by exact MD5 hash match within an agent's scope.
+ * Returns the first match, or null if none found.
+ */
+export async function findByHash(hash: string, agentId: string): Promise<MemoryNote | null> {
+  await ensureCollection()
+  const body = {
+    filter: {
+      must: [
+        { key: 'hash', match: { value: hash } },
+        {
+          should: [
+            { key: 'agent_id', match: { value: agentId } },
+            { key: 'agent_id', match: { value: 'shared' } },
+          ],
+        },
+      ],
+    },
+    with_payload: true,
+    with_vector: true,
+    limit: 1,
+  }
+  const result = (await qdrant('POST', `/collections/${COLLECTION}/points/scroll`, body)) as {
+    points: Array<{ id: string; payload: Record<string, unknown>; vector: number[] }>
+  }
+  if (!result.points.length) return null
+  return pointToNote(result.points[0])
+}
+
+/**
+ * Update content, embedding, and hash of an existing note (partial update).
+ * Other fields (keywords, tags, context, links, etc.) are preserved.
+ */
+export async function updateNoteContent(
+  id: string,
+  content: string,
+  embedding: number[],
+  hash: string,
+): Promise<void> {
+  await ensureCollection()
+  // Update the vector
+  await qdrant('PUT', `/collections/${COLLECTION}/points/vectors?wait=true`, {
+    points: [{ id, vector: embedding }],
+  })
+  // Update the payload fields
+  await qdrant('POST', `/collections/${COLLECTION}/points/payload?wait=true`, {
+    payload: { content, hash },
+    points: [id],
+  })
 }
 
 export async function queryByEmbedding(

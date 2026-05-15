@@ -4,8 +4,9 @@
  */
 
 import { v4 as uuidv4 } from 'uuid'
+import { createHash } from 'crypto'
 import { encode } from './embedding.js'
-import { addNote, getNote, updateNote, queryByEmbedding, listNotes, countNotes, type MemoryNote } from './storage.js'
+import { addNote, getNote, updateNote, queryByEmbedding, listNotes, countNotes, findByHash, updateNoteContent, type MemoryNote } from './storage.js'
 import { llmConstructNote, llmShouldLink, llmEvolveNote } from './llm.js'
 
 // ── BM25 helpers ──────────────────────────────────────────────────────────────
@@ -84,6 +85,14 @@ function buildEmbedText(note: Pick<MemoryNote, 'content' | 'keywords' | 'tags' |
 
 // ── addMemory ─────────────────────────────────────────────────────────────────
 export async function addMemory(content: string, agentId = 'main'): Promise<string> {
+  // ── Layer 1: Exact hash dedup (before LLM & embedding, cheapest check) ──────
+  const hash = createHash('md5').update(content).digest('hex')
+  const existingByHash = await findByHash(hash, agentId)
+  if (existingByHash) {
+    console.log(`[add] dedup: exact hash match, skipping (id=${existingByHash.id.slice(0, 8)})`)
+    return existingByHash.id
+  }
+
   console.log('[add] Constructing note...')
 
   // Step 1: Note Construction
@@ -95,6 +104,14 @@ export async function addMemory(content: string, agentId = 'main'): Promise<stri
   const fieldsText = buildEmbedText({ content, keywords, tags, context })
   const embedding = await encode(fieldsText)
 
+  // ── Layer 2: High-similarity vector dedup (UPDATE instead of INSERT) ─────────
+  const topMatch = await queryByEmbedding(embedding, 1, agentId, 0.0)
+  if (topMatch.length > 0 && topMatch[0].score >= 0.88) {
+    console.log(`[add] dedup: high-sim match (sim=${topMatch[0].score.toFixed(3)}), updating existing`)
+    await updateNoteContent(topMatch[0].note.id, content, embedding, hash)
+    return topMatch[0].note.id
+  }
+
   const note: MemoryNote = {
     id: uuidv4(),
     content,
@@ -105,6 +122,7 @@ export async function addMemory(content: string, agentId = 'main'): Promise<stri
     embedding,
     links: [],
     agent_id: agentId,
+    hash,
   }
 
   // Save first
