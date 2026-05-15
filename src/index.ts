@@ -216,6 +216,60 @@ function register(api: {
     logger.warn('openclaw-amem: api.registerTool not available — tools not registered')
   }
 
+  // ── agent_end hook: auto-capture memories after each turn ─────────────────
+  if (typeof (api as any).registerHook === 'function' || typeof (api as any).on === 'function') {
+    const hookFn = (typeof (api as any).on === 'function' ? (api as any).on : (api as any).registerHook).bind(api)
+    hookFn('agent_end', async (event: {
+      messages?: Array<{ role: string; content: string | Array<{ type: string; text?: string }> }>
+      success?: boolean
+    }) => {
+      try {
+        if (!event.success) return
+        // Extract last user + assistant exchange
+        const msgs = event.messages || []
+        const lastUser = [...msgs].reverse().find(m => m.role === 'user')
+        const lastAssistant = [...msgs].reverse().find(m => m.role === 'assistant')
+        if (!lastUser || !lastAssistant) return
+
+        const userText = typeof lastUser.content === 'string'
+          ? lastUser.content
+          : lastUser.content.filter((b: any) => b.type === 'text').map((b: any) => b.text).join(' ')
+        const assistantText = typeof lastAssistant.content === 'string'
+          ? lastAssistant.content
+          : lastAssistant.content.filter((b: any) => b.type === 'text').map((b: any) => b.text).join(' ')
+
+        if (!userText || userText.length < 10) return
+
+        // Ask LLM to extract memorable facts from this exchange
+        const { llmCall } = await import('./llm.js')
+        const prompt = `You are a memory extraction assistant. Given a conversation exchange, extract 0-3 important facts worth remembering long-term. Only extract genuinely important facts (decisions, preferences, project status, account info, key insights). Skip small talk and trivial content.
+
+User: ${userText.slice(0, 500)}
+Assistant: ${assistantText.slice(0, 500)}
+
+Respond with a JSON array of strings (facts to remember), or an empty array [] if nothing is worth remembering. Each fact should be a concise sentence under 150 chars. Example: ["Alex决定用 CrewAI 作为多 agent 框架", "MetaSmith 定位是 bug 修复工具，不做通用代码生成"]`
+
+        const result = await llmCall(prompt, 300)
+        if (!result) return
+
+        const match = result.match(/\[.*\]/s)
+        if (!match) return
+        const facts: string[] = JSON.parse(match[0])
+        if (!Array.isArray(facts) || facts.length === 0) return
+
+        for (const fact of facts.slice(0, 3)) {
+          if (typeof fact === 'string' && fact.length > 5) {
+            await addMemory(fact, agentId)
+            logger.info(`openclaw-amem: auto-captured memory: "${fact.slice(0, 60)}..."`)
+          }
+        }
+      } catch (e) {
+        logger.warn(`openclaw-amem: agent_end auto-capture failed — ${(e as Error).message}`)
+      }
+    }, { timeoutMs: 30000 })
+    logger.info('openclaw-amem: agent_end auto-capture hook registered')
+  }
+
   // ── registerService ──────────────────────────────────────────────────────
   if (typeof api.registerService === 'function') {
     api.registerService({

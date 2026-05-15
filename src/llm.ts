@@ -14,7 +14,7 @@ const client = new Anthropic({
 const MODEL = 'claude-sonnet-4-6'  // faster than opus for amem ops
 
 // ── Base LLM call ─────────────────────────────────────────────────────────────
-async function llmCall(prompt: string, maxTokens = 500): Promise<string | null> {
+export async function llmCall(prompt: string, maxTokens = 500): Promise<string | null> {
   try {
     const resp = await client.messages.create({
       model: MODEL,
