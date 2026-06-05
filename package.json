@@ -16,7 +16,9 @@
     "format": "prettier --check \"src/**/*.ts\" \"scripts/**/*.ts\"",
     "format:fix": "prettier --write \"src/**/*.ts\" \"scripts/**/*.ts\"",
     "check:boundaries": "tsx scripts/check-boundaries.ts",
-    "check": "npm run format && npm run lint && npm run check:boundaries"
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "check": "npm run format && npm run lint && npm run check:boundaries && npm run test"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.52.0",
@@ -33,6 +35,7 @@
     "tsup": "^8.4.0",
     "tsx": "^4.21.0",
     "typescript": "^5.8.0",
-    "typescript-eslint": "^8.60.1"
+    "typescript-eslint": "^8.60.1",
+    "vitest": "^4.1.8"
   }
 }

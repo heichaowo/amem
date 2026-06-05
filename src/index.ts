@@ -414,3 +414,5 @@ const plugin = definePluginEntry({
 
 export default plugin
 export { register }
+export { addMemory, searchMemory, listMemories, mergeSimilarNotes, consolidateMemories } from './memory.js'
+export { ensureCollection, getNote, updateNote, deleteNote, invalidateNote, listNotes } from './storage.js'

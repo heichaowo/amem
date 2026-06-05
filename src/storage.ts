@@ -47,7 +47,7 @@ export interface QueryResult {
 
 // ── Config ────────────────────────────────────────────────────────────────────
 const QDRANT_URL = 'http://localhost:6333'
-const COLLECTION = 'amem_notes'
+const getCollection = () => process.env.AMEM_COLLECTION || 'amem_notes'
 const VECTOR_DIM = 384
 
 // ── HTTP helpers ──────────────────────────────────────────────────────────────
@@ -67,23 +67,28 @@ async function qdrant(method: string, path: string, body?: unknown): Promise<unk
 // ── Collection init ───────────────────────────────────────────────────────────
 let _collectionReady = false
 
+/** Reset the collection-ready flag. Used in tests after dropping the collection. */
+export function resetCollectionReady(): void {
+  _collectionReady = false
+}
+
 export async function ensureCollection(): Promise<void> {
   if (_collectionReady) return
   try {
-    await qdrant('GET', `/collections/${COLLECTION}`)
+    await qdrant('GET', `/collections/${getCollection()}`)
     _collectionReady = true
   } catch {
     // Create collection
-    await qdrant('PUT', `/collections/${COLLECTION}`, {
+    await qdrant('PUT', `/collections/${getCollection()}`, {
       vectors: { size: VECTOR_DIM, distance: 'Cosine' },
     })
     // Index agent_id for fast filtering
-    await qdrant('PUT', `/collections/${COLLECTION}/index`, {
+    await qdrant('PUT', `/collections/${getCollection()}/index`, {
       field_name: 'agent_id',
       field_schema: 'keyword',
     })
     // Index hash for exact-match dedup
-    await qdrant('PUT', `/collections/${COLLECTION}/index`, {
+    await qdrant('PUT', `/collections/${getCollection()}/index`, {
       field_name: 'hash',
       field_schema: 'keyword',
     })
@@ -160,18 +165,22 @@ function pointToNote(point: { id: string; payload: Record<string, unknown>; vect
 // ── Agent filter ──────────────────────────────────────────────────────────────
 function agentFilter(agentId: string) {
   return {
-    must_not: [{ key: 'is_active', match: { value: false } }],
-    should: [
-      { key: 'agent_id', match: { value: agentId } },
-      { key: 'agent_id', match: { value: 'shared' } },
+    must: [
+      {
+        should: [
+          { key: 'agent_id', match: { value: agentId } },
+          { key: 'agent_id', match: { value: 'shared' } },
+        ],
+      },
     ],
+    must_not: [{ key: 'is_active', match: { value: false } }],
   }
 }
 
 // ── CRUD ──────────────────────────────────────────────────────────────────────
 export async function addNote(note: MemoryNote): Promise<void> {
   await ensureCollection()
-  await qdrant('PUT', `/collections/${COLLECTION}/points?wait=true`, {
+  await qdrant('PUT', `/collections/${getCollection()}/points?wait=true`, {
     points: [noteToPoint(note)],
   })
 }
@@ -179,7 +188,7 @@ export async function addNote(note: MemoryNote): Promise<void> {
 export async function getNote(id: string): Promise<MemoryNote | null> {
   await ensureCollection()
   try {
-    const result = (await qdrant('POST', `/collections/${COLLECTION}/points`, {
+    const result = (await qdrant('POST', `/collections/${getCollection()}/points`, {
       ids: [id],
       with_payload: true,
       with_vector: true,
@@ -205,6 +214,7 @@ export async function findByHash(hash: string, agentId: string): Promise<MemoryN
     filter: {
       must: [
         { key: 'hash', match: { value: hash } },
+        { key: 'is_active', match: { value: true } },
         {
           should: [
             { key: 'agent_id', match: { value: agentId } },
@@ -212,13 +222,12 @@ export async function findByHash(hash: string, agentId: string): Promise<MemoryN
           ],
         },
       ],
-      must_not: [{ key: 'is_active', match: { value: false } }],
     },
     with_payload: true,
     with_vector: true,
     limit: 1,
   }
-  const result = (await qdrant('POST', `/collections/${COLLECTION}/points/scroll`, body)) as {
+  const result = (await qdrant('POST', `/collections/${getCollection()}/points/scroll`, body)) as {
     points: Array<{ id: string; payload: Record<string, unknown>; vector: number[] }>
   }
   if (!result.points.length) return null
@@ -232,11 +241,11 @@ export async function findByHash(hash: string, agentId: string): Promise<MemoryN
 export async function updateNoteContent(id: string, content: string, embedding: number[], hash: string): Promise<void> {
   await ensureCollection()
   // Update the vector
-  await qdrant('PUT', `/collections/${COLLECTION}/points/vectors?wait=true`, {
+  await qdrant('PUT', `/collections/${getCollection()}/points/vectors?wait=true`, {
     points: [{ id, vector: embedding }],
   })
   // Update the payload fields
-  await qdrant('POST', `/collections/${COLLECTION}/points/payload?wait=true`, {
+  await qdrant('POST', `/collections/${getCollection()}/points/payload?wait=true`, {
     payload: { content, hash },
     points: [id],
   })
@@ -249,7 +258,7 @@ export async function queryByEmbedding(
   scoreThreshold = 0.0
 ): Promise<QueryResult[]> {
   await ensureCollection()
-  const result = (await qdrant('POST', `/collections/${COLLECTION}/points/search`, {
+  const result = (await qdrant('POST', `/collections/${getCollection()}/points/search`, {
     vector: embedding,
     limit: topK,
     with_payload: true,
@@ -280,13 +289,13 @@ export async function queryByEmbedding(
     // but group the shared last_accessed update in one bulk call.
     Promise.all([
       // last_accessed bulk update (same value for all)
-      qdrant('POST', `/collections/${COLLECTION}/points/payload?wait=false`, {
+      qdrant('POST', `/collections/${getCollection()}/points/payload?wait=false`, {
         payload: { last_accessed: now },
         points: ids,
       }),
       // per-note retrieval_count increments
       ...patches.map((p) =>
-        qdrant('POST', `/collections/${COLLECTION}/points/payload?wait=false`, {
+        qdrant('POST', `/collections/${getCollection()}/points/payload?wait=false`, {
           payload: { retrieval_count: p.retrieval_count },
           points: [p.id],
         })
@@ -315,7 +324,7 @@ export async function listNotes(agentId?: string): Promise<MemoryNote[]> {
   }
   if (agentId) body.filter = agentFilter(agentId)
 
-  const result = (await qdrant('POST', `/collections/${COLLECTION}/points/scroll`, body)) as {
+  const result = (await qdrant('POST', `/collections/${getCollection()}/points/scroll`, body)) as {
     points: Array<{ id: string; payload: Record<string, unknown>; vector: number[] }>
   }
   return result.points.map(pointToNote)
@@ -323,14 +332,14 @@ export async function listNotes(agentId?: string): Promise<MemoryNote[]> {
 
 export async function deleteNote(id: string): Promise<void> {
   await ensureCollection()
-  await qdrant('POST', `/collections/${COLLECTION}/points/delete`, {
+  await qdrant('POST', `/collections/${getCollection()}/points/delete`, {
     points: [id],
   })
 }
 
 export async function invalidateNote(id: string): Promise<void> {
   await ensureCollection()
-  await qdrant('POST', `/collections/${COLLECTION}/points/payload?wait=true`, {
+  await qdrant('POST', `/collections/${getCollection()}/points/payload?wait=true`, {
     payload: { is_active: false },
     points: [id],
   })
@@ -345,6 +354,7 @@ export async function getNotesByDatePrefix(datePrefix: string, agentId: string):
   const body: Record<string, unknown> = {
     filter: {
       must: [
+        { key: 'is_active', match: { value: true } },
         {
           should: [
             { key: 'agent_id', match: { value: agentId } },
@@ -352,13 +362,12 @@ export async function getNotesByDatePrefix(datePrefix: string, agentId: string):
           ],
         },
       ],
-      must_not: [{ key: 'is_active', match: { value: false } }],
     },
     with_payload: true,
     with_vector: true,
     limit: 10000,
   }
-  const result = (await qdrant('POST', `/collections/${COLLECTION}/points/scroll`, body)) as {
+  const result = (await qdrant('POST', `/collections/${getCollection()}/points/scroll`, body)) as {
     points: Array<{ id: string; payload: Record<string, unknown>; vector: number[] }>
   }
   return result.points.map(pointToNote).filter((n) => n.timestamp.startsWith(datePrefix))
@@ -369,7 +378,7 @@ export async function countNotes(agentId?: string): Promise<number> {
   const body: Record<string, unknown> = { exact: true }
   if (agentId) body.filter = agentFilter(agentId)
 
-  const result = (await qdrant('POST', `/collections/${COLLECTION}/points/count`, body)) as {
+  const result = (await qdrant('POST', `/collections/${getCollection()}/points/count`, body)) as {
     count: number
   }
   return result.count
@@ -377,7 +386,7 @@ export async function countNotes(agentId?: string): Promise<number> {
 
 export async function updateNoteLinks(id: string, links: string[]): Promise<void> {
   await ensureCollection()
-  await qdrant('POST', `/collections/${COLLECTION}/points/payload?wait=true`, {
+  await qdrant('POST', `/collections/${getCollection()}/points/payload?wait=true`, {
     payload: { links },
     points: [id],
   })
