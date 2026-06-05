@@ -10,7 +10,8 @@
   },
   "scripts": {
     "build": "tsup src/index.ts --format cjs --out-dir dist",
-    "dev": "tsup src/index.ts --format cjs --watch"
+    "dev": "tsup src/index.ts --format cjs --watch",
+    "consolidate": "tsx scripts/consolidate-memories.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.52.0",

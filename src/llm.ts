@@ -159,7 +159,7 @@ ${memoryList}
 ## 操作类型
 - NEW：提取全新事实（已有记忆中没有的信息）
 - UPDATE：新信息更新了某条已有记忆，用 existingIdx 指定要更新的条目
-- DELETE：某条已有记忆已经过时或错误，用 existingIdx 指定，fact 填原内容
+- DELETE：某条已有记忆已经过时、发生冲突或错误，用 existingIdx 指定，fact 填原内容
 - NONE：不值得记录或已有完全相同的信息
 
 ## 输出格式
@@ -240,32 +240,51 @@ export async function llmShouldMerge(
 export interface EvolvedNote {
   tags: string[] | null
   context: string | null
+  shouldStrengthen: boolean
+  suggestedConnections: string[]
+  tagsToUpdate: string[]
 }
 
-export async function llmEvolveNote(content: string, linkedContents: string[]): Promise<EvolvedNote> {
-  const linkedStr = linkedContents.map((c) => `- ${c}`).join('\n')
-  const prompt = `A memory note has gained new connections. Update its context and tags.
+export async function llmEvolveNote(
+  content: string,
+  linkedNotes: Array<{ id: string; content: string }>,
+): Promise<EvolvedNote> {
+  const linkedStr = linkedNotes.map((n) => `- ID: ${n.id}\n  Content: ${n.content}`).join('\n')
+  const prompt = `A memory note has gained new connections. Update its context, tags, and decide whether to strengthen connections with specific neighbors.
 Reply with JSON only (no markdown):
 {
   "tags": ["tag1", "tag2", ...],
-  "context": "updated one sentence summary"
+  "context": "updated one sentence summary",
+  "should_strengthen": true|false,
+  "suggested_connections": ["neighbor_id_1", "neighbor_id_2", ...],
+  "tags_to_update": ["tag_1", ..., "tag_n"]
 }
 
-Original note: ${content}
-Newly linked notes:
+Guidelines:
+- "tags" and "context" are for updating the original note based on new connections.
+- "should_strengthen" is a decision whether this note should strengthen its connections to any of the newly linked notes (neighbors).
+- "suggested_connections" must contain only IDs from the newly linked notes (neighbors) listed below.
+- "tags_to_update" are updated tags for the original note itself if we strengthen connections.
+
+Original note content: ${content}
+
+Newly linked notes (neighbors):
 ${linkedStr}`
 
   const raw = await llmCall(prompt, 500)
-  if (!raw) return { tags: null, context: null }
+  if (!raw) return { tags: null, context: null, shouldStrengthen: false, suggestedConnections: [], tagsToUpdate: [] }
 
   try {
     const data = JSON.parse(stripFences(raw))
     return {
       tags: Array.isArray(data.tags) ? data.tags : null,
       context: typeof data.context === 'string' ? data.context : null,
+      shouldStrengthen: typeof data.should_strengthen === 'boolean' ? data.should_strengthen : false,
+      suggestedConnections: Array.isArray(data.suggested_connections) ? data.suggested_connections.map(String) : [],
+      tagsToUpdate: Array.isArray(data.tags_to_update) ? data.tags_to_update.map(String) : [],
     }
   } catch (e) {
     console.error(`[amem] Evolution parse failed: ${(e as Error).message}`)
-    return { tags: null, context: null }
+    return { tags: null, context: null, shouldStrengthen: false, suggestedConnections: [], tagsToUpdate: [] }
   }
 }

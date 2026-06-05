@@ -7,6 +7,11 @@ export default defineConfig({
   bundle: true,
   // @huggingface/transformers uses dynamic imports for ONNX backends
   // bundling it breaks backend detection — keep as external
-  external: ['@huggingface/transformers', 'onnxruntime-node'],
+  external: [
+    '@huggingface/transformers',
+    'onnxruntime-node',
+    'openclaw',
+    /^openclaw\/.+/
+  ],
   noExternal: ['chromadb', '@anthropic-ai/sdk', 'uuid'],
 })

@@ -11,8 +11,9 @@
 
 import * as os from 'os'
 import * as path from 'path'
-import { addMemory, searchMemory, listMemories, mergeSimilarNotes } from './memory.js'
-import { ensureCollection, updateNoteContent, deleteNote } from './storage.js'
+import { definePluginEntry } from 'openclaw/plugin-sdk/plugin-entry'
+import { addMemory, searchMemory, listMemories, mergeSimilarNotes, consolidateMemories } from './memory.js'
+import { ensureCollection, updateNoteContent, deleteNote, invalidateNote } from './storage.js'
 import { encode } from './embedding.js'
 import { createHash } from 'crypto'
 
@@ -213,7 +214,39 @@ function register(api: {
       { optional: true }
     )
 
-    logger.info('openclaw-amem: memory_search, memory_add, memory_list tools registered')
+    // ── registerTool: memory_consolidate ──────────────────────────────────────
+    api.registerTool(
+      {
+        name: 'memory_consolidate',
+        label: 'Memory Consolidate (A-MEM)',
+        description: 'Trigger daily consolidation to merge semantic duplicates.',
+        parameters: {
+          type: 'object',
+          properties: {},
+          required: [],
+        },
+        async execute(_toolCallId: string, _params: Record<string, never>) {
+          const start = Date.now()
+          try {
+            const merged = await consolidateMemories(agentId, logger)
+            logger.info(`openclaw-amem: memory_consolidate OK merged=${merged} (${Date.now() - start}ms)`)
+            return {
+              content: [{ type: 'text', text: `Consolidation completed. Merged ${merged} memory pairs.` }],
+              details: { ok: true, mergedCount: merged },
+            }
+          } catch (err) {
+            logger.warn(`openclaw-amem: memory_consolidate failed — ${(err as Error).message}`)
+            return {
+              content: [{ type: 'text', text: `Consolidation failed: ${(err as Error).message}` }],
+              details: { ok: false, error: String(err) },
+            }
+          }
+        },
+      },
+      { optional: true }
+    )
+
+    logger.info('openclaw-amem: memory_search, memory_add, memory_list, memory_consolidate tools registered')
   } else {
     logger.warn('openclaw-amem: api.registerTool not available — tools not registered')
   }
@@ -285,8 +318,8 @@ function register(api: {
           } else if (op.action === 'DELETE' && op.existingIdx !== undefined) {
             const target = existingMemories[op.existingIdx]
             if (target) {
-              await deleteNote(target.id)
-              logger.info(`openclaw-amem: CRUD DELETE id=${target.id.slice(0, 8)}: "${op.fact.slice(0, 60)}${op.fact.length > 60 ? '...' : ''}"` )
+              await invalidateNote(target.id)
+              logger.info(`openclaw-amem: CRUD INVALIDATE id=${target.id.slice(0, 8)}: "${op.fact.slice(0, 60)}${op.fact.length > 60 ? '...' : ''}"` )
             }
           }
           // NONE: skip
@@ -308,6 +341,30 @@ function register(api: {
     logger.info('openclaw-amem: agent_end CRUD decision hook registered')
   }
 
+  // ── scheduleNextRun ──────────────────────────────────────────────────────
+  function scheduleNextRun() {
+    const now = new Date()
+    const target = new Date()
+    target.setHours(2, 30, 0, 0)
+    if (target.getTime() <= now.getTime()) {
+      target.setDate(target.getDate() + 1)
+    }
+    const delay = target.getTime() - now.getTime()
+    setTimeout(async () => {
+      try {
+        logger.info('openclaw-amem: Running scheduled daily consolidation...')
+        const merged = await consolidateMemories(agentId, logger)
+        if (merged > 0) {
+          logger.info(`openclaw-amem: Scheduled daily consolidation merged ${merged} pairs.`)
+        }
+      } catch (err) {
+        logger.warn(`openclaw-amem: Scheduled daily consolidation failed — ${(err as Error).message}`)
+      }
+      scheduleNextRun()
+    }, delay)
+  }
+  scheduleNextRun()
+
   // ── registerService ──────────────────────────────────────────────────────
   if (typeof api.registerService === 'function') {
     api.registerService({
@@ -320,4 +377,12 @@ function register(api: {
   }
 }
 
+const plugin = definePluginEntry({
+  id: 'openclaw-amem',
+  name: 'Memory (A-MEM v2)',
+  description: 'A-MEM agentic memory backend for OpenClaw — Qdrant + Transformers.js, no Python required.',
+  register
+})
+
+export default plugin
 export { register }

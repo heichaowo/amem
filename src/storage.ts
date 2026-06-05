@@ -14,6 +14,9 @@ export interface EvolutionEntry {
   newContext: string
   oldTags: string[]
   newTags: string[]
+  action?: 'update_neighbor' | 'strengthen' | 'consolidate'
+  suggestedConnections?: string[]
+  tagsUpdated?: string[]
 }
 
 export interface MemoryNote {
@@ -34,6 +37,7 @@ export interface MemoryNote {
   evolution_history: EvolutionEntry[]  // log of tag/context changes
   // ── Story 13-E: coarse category ──────────────────────────────────────────
   category: string    // e.g. "Technical" | "Business" | … | "General"
+  is_active: boolean
 }
 
 export interface QueryResult {
@@ -108,6 +112,7 @@ function noteToPoint(note: MemoryNote) {
       evolution_history: JSON.stringify(note.evolution_history ?? []),
       // 13-E
       category: note.category || 'General',
+      is_active: note.is_active !== false,
     },
   }
 }
@@ -152,12 +157,16 @@ function pointToNote(point: {
     evolution_history: evolutionHistory,
     // 13-E
     category: (p.category as string) || 'General',
+    is_active: p.is_active !== false,
   }
 }
 
 // ── Agent filter ──────────────────────────────────────────────────────────────
 function agentFilter(agentId: string) {
   return {
+    must_not: [
+      { key: 'is_active', match: { value: false } }
+    ],
     should: [
       { key: 'agent_id', match: { value: agentId } },
       { key: 'agent_id', match: { value: 'shared' } },
@@ -208,6 +217,9 @@ export async function findByHash(hash: string, agentId: string): Promise<MemoryN
             { key: 'agent_id', match: { value: 'shared' } },
           ],
         },
+      ],
+      must_not: [
+        { key: 'is_active', match: { value: false } }
       ],
     },
     with_payload: true,
@@ -329,6 +341,14 @@ export async function deleteNote(id: string): Promise<void> {
   })
 }
 
+export async function invalidateNote(id: string): Promise<void> {
+  await ensureCollection()
+  await qdrant('POST', `/collections/${COLLECTION}/points/payload?wait=true`, {
+    payload: { is_active: false },
+    points: [id],
+  })
+}
+
 /**
  * Fetch all notes for a given agentId whose timestamp starts with datePrefix (e.g. "2026-05-15").
  * Qdrant does not support string prefix filters, so we scroll all agent notes and filter in memory.
@@ -347,6 +367,9 @@ export async function getNotesByDatePrefix(
             { key: 'agent_id', match: { value: 'shared' } },
           ],
         },
+      ],
+      must_not: [
+        { key: 'is_active', match: { value: false } }
       ],
     },
     with_payload: true,
@@ -370,4 +393,28 @@ export async function countNotes(agentId?: string): Promise<number> {
     count: number
   }
   return result.count
+}
+
+export async function updateNoteLinks(id: string, links: string[]): Promise<void> {
+  await ensureCollection()
+  await qdrant('POST', `/collections/${COLLECTION}/points/payload?wait=true`, {
+    payload: { links },
+    points: [id],
+  })
+}
+
+export async function replaceLinkReferences(
+  oldId: string,
+  newId: string,
+  agentId: string,
+): Promise<void> {
+  const notes = await listNotes(agentId)
+  for (const note of notes) {
+    if (note.links.includes(oldId)) {
+      const newLinks = note.links.map((linkId) => (linkId === oldId ? newId : linkId))
+      const filteredLinks = newLinks.filter((linkId) => linkId !== note.id)
+      const uniqueLinks = Array.from(new Set(filteredLinks))
+      await updateNoteLinks(note.id, uniqueLinks)
+    }
+  }
 }
