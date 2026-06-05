@@ -3,36 +3,41 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![arXiv](https://img.shields.io/badge/arXiv-2502.12110-b31b1b.svg)](https://arxiv.org/abs/2502.12110)
 [![OpenClaw](https://img.shields.io/badge/OpenClaw-plugin-blue)](https://github.com/openclaw/openclaw)
+[![CI Workflow](https://github.com/heichaowo/openclaw-amem/actions/workflows/ci.yml/badge.svg)](https://github.com/heichaowo/openclaw-amem/actions)
 
 **A-MEM agentic memory backend for [OpenClaw](https://github.com/openclaw/openclaw)**
 
-An OpenClaw plugin that integrates the [A-MEM](https://arxiv.org/abs/2502.12110) (Agentic Memory) system — dynamic memory organization with automatic **link generation** and **memory evolution**, backed by Qdrant + Transformers.js + LLM. **No Python or conda required.**
+An OpenClaw plugin that integrates the **A-MEM** (Agentic Memory) system — featuring dynamic memory networks, automatic **link generation**, **memory evolution**, and **in-process consolidation**, backed by Qdrant + local Transformers.js + LLM. **No Python required.**
 
-> **Note:** This project is an OpenClaw integration of the A-MEM system. For the original research implementation and paper reproduction, see [agiresearch/A-MEM](https://github.com/agiresearch/A-MEM).
+> **Note:** This project is a production-ready OpenClaw plugin integration of the A-MEM system. For the original research implementation and paper reproduction, see [agiresearch/A-MEM](https://github.com/agiresearch/A-MEM).
 
 ---
 
 ## Key Features ✨
 
-- 🔄 **Dynamic memory organization** based on Zettelkasten principles
-- 🔗 **Automatic link generation** — new memories are linked to related existing ones via embedding similarity + LLM judgment
-- 🧬 **Memory evolution** — existing memories update their context, tags, and embeddings when new related memories arrive
-- 🔍 **Hybrid retrieval** — BM25 + vector search with RRF fusion
-- 🤖 **OpenClaw native** — registers as `memory_search` / `memory_add` tools, works with `plugins.slots.memory`
-- 🏠 **Local-first, no Python** — Qdrant + Transformers.js ONNX, pure TypeScript in-process
+*   🔄 **Dynamic Memory Network** — Inspired by Zettelkasten. Memories are stored as nodes in a graph, not just flat vector rows.
+*   🔗 **Automatic Link Generation** — New memories automatically link bidirectionally to existing related memories via embedding similarity + LLM verification.
+*   🧬 **Memory Evolution & Strengthening** (Stories 13-B, 13-D) — Linked memories update context/tags/embeddings when new details arrive. Added `strengthen` action allowing memories to actively request link enforcement and tag propagation.
+*   🚦 **LLM CRUD Decision Gate** (Story 11) — Hooked into OpenClaw's `agent_end` dialog termination. Analyses user-assistant dialogue context, running `NEW` / `UPDATE` / `DELETE` / `NONE` decisions to keep memory clean.
+*   🧹 **Same-Day Semantic Merger** (Story 12) — Automatically merge semantic duplicates written during the same day ($\ge 0.80$).
+*   📅 **In-Process Daily Consolidation** (Story 16) — Endogenous in-process `setTimeout` scheduler running at 02:30 AM. Groups notes by `category`, merges semantic duplicates ($\ge 0.75$) into clean unified knowledge notes, and **cascades all link references** automatically to preserve graph topology.
+*   ⏳ **Temporal Invalidation & Soft-Delete** (Story 15) — Outdated/conflicting memories are marked `is_active: false` (soft-deleted) and excluded from searches using zero-migration Qdrant filters.
+*   🔥 **Retrieval Heat Tracking** (Story 13-A) — Incorporates `retrieval_count` and `last_accessed` timestamps in hybrid scoring:
+    $$\text{Final Score} = \text{RRF Score} \times (1 + 0.05 \times \ln(1 + \text{retrieval\_count}))$$
+*   🛡️ **Strict Quality Controls** (Story 17) — Full Vitest test coverage for embeddings (mocked), storage, and link-cascading consolidation, integrated into ESLint + Prettier + import boundary CI checks running on GitHub Actions.
 
 ---
 
 ## What is A-MEM?
 
-A-MEM is a memory system for LLM agents inspired by the Zettelkasten method. Unlike flat vector stores, A-MEM treats memories as a living, self-organizing network:
+A-MEM is an advanced memory architecture for LLM agents inspired by the Zettelkasten method. Unlike traditional flat vector databases, A-MEM maintains memory as a living, self-evolving semantic graph:
 
-1. **Note Construction** — LLM generates keywords, tags, and a context summary on write
-2. **Link Generation** — Top-K candidates (cosine sim > 0.3) are evaluated by LLM; meaningful ones are linked bidirectionally
-3. **Memory Evolution** — Up to 3 linked existing notes have their context/tags/embeddings updated to reflect the new relationship
-4. **Hybrid Retrieval** — BM25 + vector search fused with RRF for robust recall
+1.  **Note Construction** — On write, LLM extracts keywords, tags, a context summary, and categorizes the note (Technical, Business, Personal, Project, Research, System, General).
+2.  **Link Generation** — Retrieves top-6 candidates; LLM judges whether to link bidirectionally (similarity $> 0.3$).
+3.  **Memory Evolution & Strengthening** — Up to 3 linked memories have their attributes evolved based on the new context, potentially triggering additional links.
+4.  **Hybrid Retrieval** — Fuses vector search (Transformers.js ONNX local `multilingual-e5-small`) and BM25 using Reciprocal Rank Fusion (RRF), boosted by retrieval frequency (heat).
 
-Paper: _A-MEM: Agentic Memory for LLM Agents_ — [arXiv:2502.12110](https://arxiv.org/abs/2502.12110)
+Academic Paper: _A-MEM: Agentic Memory for LLM Agents_ — [arXiv:2502.12110](https://arxiv.org/abs/2502.12110) (NeurIPS 2025)
 
 ---
 
@@ -47,7 +52,7 @@ OpenClaw Agent
                           ┌──────────────┼──────────────┐
                           ▼              ▼               ▼
                        Qdrant     Transformers.js    LLM (Anthropic)
-                    (vector store)  (ONNX embed)   (note construction
+                    (vector store)  (ONNX embed)   (CRUD decision
                       :6333        384-dim local    + link judgment
                    agent_id ISO                    + evolution)
 ```
@@ -56,10 +61,10 @@ OpenClaw Agent
 
 ## Requirements
 
-- OpenClaw v2026.4+
-- Node.js 18+
-- Qdrant running on `:6333`
-- Anthropic-compatible LLM proxy on `:8080`
+*   OpenClaw v2026.4+
+*   Node.js 18+ (Node 24/26 fully supported)
+*   Qdrant running on `:6333`
+*   Anthropic-compatible LLM proxy on `:8080` (uses `claude-sonnet-4-6` or compatible)
 
 ---
 
@@ -76,6 +81,8 @@ openclaw plugins install git:github.com/heichaowo/openclaw-amem
 ```
 
 ### 2. Configure `~/.openclaw/openclaw.json`
+
+Add `openclaw-amem` to your allowed plugins and hook it into the `memory` slot:
 
 ```json
 {
@@ -103,91 +110,71 @@ openclaw plugins install git:github.com/heichaowo/openclaw-amem
 openclaw gateway restart
 ```
 
-### Plugin config reference
+---
+
+## Plugin Configuration Reference
 
 | Key | Default | Description |
 |-----|---------|-------------|
 | `agentId` | `"main"` | Agent namespace for memory isolation |
-| `topK` | `5` | Maximum memories to retrieve |
+| `topK` | `5` | Maximum memories to retrieve during search |
 
 ---
 
-## Usage
+## Usage & Tools
 
-Once installed, the agent gains three tools:
+Once installed, the plugin exposes the following capabilities:
 
 ### `memory_add`
-Write a new memory. Automatically triggers note construction, link generation, and memory evolution.
+Writes a new memory. Automatically evaluates exact-hash duplicate checks, runs LLM note construction, generates bidirectional links, and evaluates memory evolution.
 
-```
-memory_add(text="Decided to use Qdrant for vector storage with agent_id namespace isolation.")
+```js
+memory_add(text="vendor profile")
 ```
 
 ### `memory_search`
-Search long-term memories using hybrid retrieval (BM25 + vector + RRF).
+Searches long-term memories using fused RRF (BM25 + Cosine similarity) with heat-based ranking.
 
-```
-memory_search(query="vector store decision", limit=5)
+```js
+memory_search(query="database configuration", limit=5)
 ```
 
 ### `memory_list`
-Return total memory count.
+Returns the total active note count for the current agent namespace.
+
+### `memory_consolidate`
+Exposes the memory consolidation tool to manually trigger category-based semantic deduplication and link cascading.
 
 ---
 
-## How Memory Evolution Works 🧬
+## Development & Test
 
-When a new memory is added:
-
-1. **Note Construction** — LLM generates keywords, tags, and a context summary
-2. **Embedding** — Transformers.js encodes the enriched note (384-dim, ONNX local)
-3. **Link Generation** — Top-K candidates (cosine sim > 0.3) are evaluated by LLM; meaningful ones are linked bidirectionally
-4. **Memory Evolution** — Up to 3 linked existing notes have their context/tags/embeddings updated to reflect the new relationship
-
-This mirrors the A-MEM paper's core contribution: memories are not static entries but a living, self-organizing network.
-
----
-
-## Multi-Agent Isolation
-
-Each agent writes to its own namespace via `agent_id`. Memories tagged `"shared"` are visible to all agents.
-
-```
-Qdrant collection: amem_notes
-  agent_id = "main"        ← main agent memories
-  agent_id = "subagent-x"  ← subagent memories
-  agent_id = "shared"      ← visible to all agents
-```
-
----
-
-## Migration from v0.1.x (ChromaDB → Qdrant)
-
-If you have existing memories in ChromaDB (`~/.openclaw/amem_db/`):
-
-```bash
-# Requires a Python environment with chromadb installed
-pip install chromadb
-python scripts/migrate-chroma-to-qdrant.py
-```
-
----
-
-## Development
+We maintain a strict code quality pipeline including linting, code formatting, path audits, and Vitest test suites.
 
 ```bash
 npm install
-npm run build   # outputs dist/index.js
-npm run dev     # watch mode
+npm run build              # Compile TS files to dist/
+npm run lint               # Lint code using ESLint (Flat Config)
+npm run format             # Check code formatting via Prettier
+npm run check:boundaries   # Run custom import boundary & absolute path auditor
+npm run test               # Run Vitest unit & integration tests
+npm run check              # Run entire validation suite (format + lint + boundaries + test)
 ```
 
 ---
 
-## Acknowledgements
+## Citation & Reference
 
-This project implements the A-MEM architecture proposed in:
+If you use this memory system in your research, please cite the original A-MEM paper:
 
-> Wujiang Xu et al. _A-MEM: Agentic Memory for LLM Agents_. arXiv:2502.12110, 2025.
+```bibtex
+@inproceedings{xu2025amem,
+  title={A-Mem: Agentic Memory for LLM Agents},
+  author={Xu, Wujiang and Liang, Zujie and Mei, Kai and Gao, Hang and Tan, Juntao and Zhang, Yongfeng},
+  booktitle={Advances in Neural Information Processing Systems (NeurIPS)},
+  year={2025}
+}
+```
 
 Original research repository: [agiresearch/A-MEM](https://github.com/agiresearch/A-MEM)
 
