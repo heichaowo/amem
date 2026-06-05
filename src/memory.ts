@@ -348,12 +348,38 @@ export async function searchMemory(query: string, topK = 5, agentId = 'main'): P
 
   const topIds = boostedMerged.slice(0, topK).map(([id]) => id)
 
+  // Story 18: 2-hop BFS link expansion
+  // Walk the link graph up to 2 hops from each top result to surface
+  // contextually related notes that scored too low for direct retrieval.
+  const BFS_MAX_HOPS = 2
+  const BFS_MAX_EXPAND = 8 // max extra notes to add via BFS (cap to avoid bloat)
+  const visitedIds = new Set<string>(topIds)
+  const bfsQueue: Array<{ id: string; hop: number }> = topIds.map((id) => ({ id, hop: 0 }))
+  const bfsExtra: string[] = [] // IDs discovered via BFS, in discovery order
+
+  while (bfsQueue.length > 0 && bfsExtra.length < BFS_MAX_EXPAND) {
+    const item = bfsQueue.shift()!
+    if (item.hop >= BFS_MAX_HOPS) continue
+    const note = noteMap.get(item.id)
+    if (!note) continue
+    for (const linkedId of note.links) {
+      if (visitedIds.has(linkedId)) continue
+      visitedIds.add(linkedId)
+      // Only include active notes (is_active !== false)
+      const linked = noteMap.get(linkedId)
+      if (!linked || linked.is_active === false) continue
+      bfsExtra.push(linkedId)
+      bfsQueue.push({ id: linkedId, hop: item.hop + 1 })
+      if (bfsExtra.length >= BFS_MAX_EXPAND) break
+    }
+  }
+
   // Build result map
   const embSimMap = new Map(embResults.map((r) => [r.note.id, r.score]))
   const rrfMap = new Map(boostedMerged.map(([id, score]) => [id, score]))
 
   const results: SearchResult[] = []
-  for (const id of topIds) {
+  for (const id of [...topIds, ...bfsExtra]) {
     const note = noteMap.get(id)
     if (!note) continue
     results.push({

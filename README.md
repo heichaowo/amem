@@ -25,6 +25,7 @@ An OpenClaw plugin that integrates the **A-MEM** (Agentic Memory) system — fea
 *   🔥 **Retrieval Heat Tracking** — Incorporates `retrieval_count` and `last_accessed` timestamps in hybrid scoring. Frequently retrieved memories receive a logarithmic heat boost to bubble up relevant context:
 
 $$\text{Final Score} = \text{RRF Score} \times \left(1 + 0.05 \times \ln\left(1 + \text{retrieval count}\right)\right)$$
+*   🔍 **2-hop Graph Traversal** — After vector retrieval, BFS walks the link graph up to 2 hops from each anchor result, surfacing contextually related memories that scored too low for direct retrieval. Recovers associations that are semantically distant but graph-connected.
 *   🛡️ **Strict Quality Controls** — Full Vitest test coverage for embeddings (mocked), storage, and link-cascading consolidation, integrated into ESLint + Prettier + import boundary CI checks running on GitHub Actions.
 
 ---
@@ -33,7 +34,7 @@ $$\text{Final Score} = \text{RRF Score} \times \left(1 + 0.05 \times \ln\left(1 
 
 | Dimension | Traditional RAG | A-MEM (Zettelkasten Graph) |
 | :--- | :--- | :--- |
-| **Retrieval Mode** | Single-vector similarity (only matches keywords or semantic distance) | **BM25 + Dense Vector Hybrid Search with RRF Fusion** |
+| **Retrieval Mode** | Single-vector similarity (only matches keywords or semantic distance) | **BM25 + Dense Vector Hybrid Search with RRF Fusion + 2-hop Graph Expansion** |
 | **Fact Evolution** | Static chunking (cannot update historical entries when new facts arrive) | **Dynamic Attribute Evolution & Connection Strengthening** |
 | **Temporal Conflicts** | Recalls contradictory facts simultaneously (causing agent hallucination) | **`is_active` soft-invalidation** (shields outdated facts from queries) |
 | **Memory Bloat** | Fragmented memories stack up infinitely, driving up Token costs | **In-process Daily Consolidation** (merges semantic duplicates) |
@@ -48,6 +49,7 @@ A-MEM is an advanced memory architecture for LLM agents inspired by the Zettelka
 2.  **Link Generation** — Retrieves top-6 candidates; LLM judges whether to link bidirectionally (similarity $> 0.3$).
 3.  **Memory Evolution & Strengthening** — Up to 3 linked memories have their attributes evolved based on the new context, potentially triggering additional links.
 4.  **Hybrid Retrieval** — Fuses vector search (Transformers.js ONNX local `multilingual-e5-small`) and BM25 using Reciprocal Rank Fusion (RRF), boosted by retrieval frequency (heat).
+5.  **2-hop BFS Graph Expansion** — After RRF top-K selection, BFS traverses the link graph up to 2 hops, appending up to 8 contextually linked notes that may be semantically distant but graph-connected. This is the key architectural advantage over flat vector memory systems like mem0.
 
 Academic Paper: _A-MEM: Agentic Memory for LLM Agents_ — [arXiv:2502.12110](https://arxiv.org/abs/2502.12110) (NeurIPS 2025)
 
