@@ -316,7 +316,13 @@ export interface SearchResult {
   rrf: number
 }
 
-export async function searchMemory(query: string, topK = 5, agentId = 'main'): Promise<SearchResult[]> {
+export async function searchMemory(
+  query: string,
+  topK = 5,
+  agentId = 'main',
+  opts?: { useBfs?: boolean }
+): Promise<SearchResult[]> {
+  const useBfs = opts?.useBfs !== false // default true
   const total = await countNotes(agentId)
   if (total === 0) return []
 
@@ -348,13 +354,13 @@ export async function searchMemory(query: string, topK = 5, agentId = 'main'): P
 
   const topIds = boostedMerged.slice(0, topK).map(([id]) => id)
 
-  // Story 18: 2-hop BFS link expansion
+  // Story 18: 2-hop BFS link expansion (can be disabled via opts.useBfs=false for ablation)
   // Walk the link graph up to 2 hops from each top result to surface
   // contextually related notes that scored too low for direct retrieval.
   const BFS_MAX_HOPS = 2
   const BFS_MAX_EXPAND = 8 // max extra notes to add via BFS (cap to avoid bloat)
   const visitedIds = new Set<string>(topIds)
-  const bfsQueue: Array<{ id: string; hop: number }> = topIds.map((id) => ({ id, hop: 0 }))
+  const bfsQueue: Array<{ id: string; hop: number }> = useBfs ? topIds.map((id) => ({ id, hop: 0 })) : []
   const bfsExtra: string[] = [] // IDs discovered via BFS, in discovery order
 
   while (bfsQueue.length > 0 && bfsExtra.length < BFS_MAX_EXPAND) {
