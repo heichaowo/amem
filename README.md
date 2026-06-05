@@ -23,8 +23,19 @@ An OpenClaw plugin that integrates the **A-MEM** (Agentic Memory) system — fea
 *   📅 **In-Process Daily Consolidation** — Endogenous in-process `setTimeout` scheduler running at 02:30 AM. Groups notes by `category`, merges semantic duplicates ($\ge 0.75$) into clean unified knowledge notes, and **cascades all link references** automatically to preserve graph topology.
 *   ⏳ **Temporal Invalidation & Soft-Delete** — Outdated/conflicting memories are marked `is_active: false` (soft-deleted) and excluded from searches using zero-migration Qdrant filters.
 *   🔥 **Retrieval Heat Tracking** — Incorporates `retrieval_count` and `last_accessed` timestamps in hybrid scoring:
-    $$\text{Final Score} = \text{RRF Score} \times (1 + 0.05 \times \ln(1 + \text{retrieval\_count}))$$
+    $$\text{Final Score} = \text{RRF Score} \times (1 + 0.05 \times \ln(1 + \text{retrieval count}))$$
 *   🛡️ **Strict Quality Controls** — Full Vitest test coverage for embeddings (mocked), storage, and link-cascading consolidation, integrated into ESLint + Prettier + import boundary CI checks running on GitHub Actions.
+
+---
+
+## Why A-MEM? (vs Traditional RAG) 🎯
+
+| Dimension (维度) | Traditional RAG (传统 RAG) | A-MEM (Zettelkasten Graph) |
+| :--- | :--- | :--- |
+| **Retrieval Mode (检索方式)** | Single-vector similarity (only matches keywords or semantic distance) | **BM25 + Dense Vector Hybrid Search with RRF Fusion** |
+| **Fact Evolution (事实演化)** | Static chunking (cannot update historical entries when new facts arrive) | **Dynamic Attribute Evolution & Connection Strengthening** |
+| **Temporal Conflicts (时序冲突)** | Recalls contradictory facts simultaneously (causing agent hallucination) | **`is_active` soft-invalidation** (shields outdated facts from queries) |
+| **Memory Bloat (记忆膨胀)** | Fragmented memories stack up infinitely, driving up Token costs | **In-process Daily Consolidation** (聚类合并, merges semantic duplicates) |
 
 ---
 
