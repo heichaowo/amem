@@ -8,8 +8,8 @@
 
 /** One entry in a note's evolution history (Story 13-B) */
 export interface EvolutionEntry {
-  triggeredBy: string   // ID of the new note that caused this evolution
-  triggeredAt: string   // ISO timestamp
+  triggeredBy: string // ID of the new note that caused this evolution
+  triggeredAt: string // ISO timestamp
   oldContext: string
   newContext: string
   oldTags: string[]
@@ -25,18 +25,18 @@ export interface MemoryNote {
   keywords: string[]
   tags: string[]
   context: string
-  links: string[]     // linked note IDs
+  links: string[] // linked note IDs
   embedding: number[]
   timestamp: string
-  agent_id: string    // "main" | "subagent-xxx" | "shared"
-  hash: string        // md5(content), for exact-match dedup
+  agent_id: string // "main" | "subagent-xxx" | "shared"
+  hash: string // md5(content), for exact-match dedup
   // ── Story 13-A: retrieval heat tracking ──────────────────────────────────
-  retrieval_count: number   // times this note has been returned by queryByEmbedding
-  last_accessed: string     // ISO timestamp of most recent retrieval
+  retrieval_count: number // times this note has been returned by queryByEmbedding
+  last_accessed: string // ISO timestamp of most recent retrieval
   // ── Story 13-B: evolution history ────────────────────────────────────────
-  evolution_history: EvolutionEntry[]  // log of tag/context changes
+  evolution_history: EvolutionEntry[] // log of tag/context changes
   // ── Story 13-E: coarse category ──────────────────────────────────────────
-  category: string    // e.g. "Technical" | "Business" | … | "General"
+  category: string // e.g. "Technical" | "Business" | … | "General"
   is_active: boolean
 }
 
@@ -117,11 +117,7 @@ function noteToPoint(note: MemoryNote) {
   }
 }
 
-function pointToNote(point: {
-  id: string
-  payload: Record<string, unknown>
-  vector?: number[]
-}): MemoryNote {
+function pointToNote(point: { id: string; payload: Record<string, unknown>; vector?: number[] }): MemoryNote {
   const p = point.payload
   const timestamp = (p.timestamp as string) || ''
 
@@ -164,9 +160,7 @@ function pointToNote(point: {
 // ── Agent filter ──────────────────────────────────────────────────────────────
 function agentFilter(agentId: string) {
   return {
-    must_not: [
-      { key: 'is_active', match: { value: false } }
-    ],
+    must_not: [{ key: 'is_active', match: { value: false } }],
     should: [
       { key: 'agent_id', match: { value: agentId } },
       { key: 'agent_id', match: { value: 'shared' } },
@@ -218,9 +212,7 @@ export async function findByHash(hash: string, agentId: string): Promise<MemoryN
           ],
         },
       ],
-      must_not: [
-        { key: 'is_active', match: { value: false } }
-      ],
+      must_not: [{ key: 'is_active', match: { value: false } }],
     },
     with_payload: true,
     with_vector: true,
@@ -237,12 +229,7 @@ export async function findByHash(hash: string, agentId: string): Promise<MemoryN
  * Update content, embedding, and hash of an existing note (partial update).
  * Other fields (keywords, tags, context, links, etc.) are preserved.
  */
-export async function updateNoteContent(
-  id: string,
-  content: string,
-  embedding: number[],
-  hash: string,
-): Promise<void> {
+export async function updateNoteContent(id: string, content: string, embedding: number[], hash: string): Promise<void> {
   await ensureCollection()
   // Update the vector
   await qdrant('PUT', `/collections/${COLLECTION}/points/vectors?wait=true`, {
@@ -259,7 +246,7 @@ export async function queryByEmbedding(
   embedding: number[],
   topK: number,
   agentId: string,
-  scoreThreshold = 0.0,
+  scoreThreshold = 0.0
 ): Promise<QueryResult[]> {
   await ensureCollection()
   const result = (await qdrant('POST', `/collections/${COLLECTION}/points/search`, {
@@ -302,7 +289,7 @@ export async function queryByEmbedding(
         qdrant('POST', `/collections/${COLLECTION}/points/payload?wait=false`, {
           payload: { retrieval_count: p.retrieval_count },
           points: [p.id],
-        }),
+        })
       ),
     ]).catch((err: unknown) => {
       // Non-fatal: retrieval tracking failure must not break search
@@ -353,10 +340,7 @@ export async function invalidateNote(id: string): Promise<void> {
  * Fetch all notes for a given agentId whose timestamp starts with datePrefix (e.g. "2026-05-15").
  * Qdrant does not support string prefix filters, so we scroll all agent notes and filter in memory.
  */
-export async function getNotesByDatePrefix(
-  datePrefix: string,
-  agentId: string,
-): Promise<MemoryNote[]> {
+export async function getNotesByDatePrefix(datePrefix: string, agentId: string): Promise<MemoryNote[]> {
   await ensureCollection()
   const body: Record<string, unknown> = {
     filter: {
@@ -368,9 +352,7 @@ export async function getNotesByDatePrefix(
           ],
         },
       ],
-      must_not: [
-        { key: 'is_active', match: { value: false } }
-      ],
+      must_not: [{ key: 'is_active', match: { value: false } }],
     },
     with_payload: true,
     with_vector: true,
@@ -379,9 +361,7 @@ export async function getNotesByDatePrefix(
   const result = (await qdrant('POST', `/collections/${COLLECTION}/points/scroll`, body)) as {
     points: Array<{ id: string; payload: Record<string, unknown>; vector: number[] }>
   }
-  return result.points
-    .map(pointToNote)
-    .filter((n) => n.timestamp.startsWith(datePrefix))
+  return result.points.map(pointToNote).filter((n) => n.timestamp.startsWith(datePrefix))
 }
 
 export async function countNotes(agentId?: string): Promise<number> {
@@ -403,11 +383,7 @@ export async function updateNoteLinks(id: string, links: string[]): Promise<void
   })
 }
 
-export async function replaceLinkReferences(
-  oldId: string,
-  newId: string,
-  agentId: string,
-): Promise<void> {
+export async function replaceLinkReferences(oldId: string, newId: string, agentId: string): Promise<void> {
   const notes = await listNotes(agentId)
   for (const note of notes) {
     if (note.links.includes(oldId)) {

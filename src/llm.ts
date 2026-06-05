@@ -11,7 +11,7 @@ const client = new Anthropic({
   baseURL: 'http://127.0.0.1:8080',
 })
 
-const MODEL = 'claude-sonnet-4-6'  // faster than opus for amem ops
+const MODEL = 'claude-sonnet-4-6' // faster than opus for amem ops
 
 // ── Base LLM call ─────────────────────────────────────────────────────────────
 export async function llmCall(prompt: string, maxTokens = 500): Promise<string | null> {
@@ -49,14 +49,7 @@ function stripFences(raw: string): string {
  * Valid category values (Story 13-E).
  * "General" is the fallback for anything that doesn't fit a specific bucket.
  */
-export type NoteCategory =
-  | 'Technical'
-  | 'Business'
-  | 'Personal'
-  | 'Project'
-  | 'Research'
-  | 'System'
-  | 'General'
+export type NoteCategory = 'Technical' | 'Business' | 'Personal' | 'Project' | 'Research' | 'System' | 'General'
 
 export interface NoteStructure {
   keywords: string[]
@@ -67,7 +60,13 @@ export interface NoteStructure {
 }
 
 const VALID_CATEGORIES = new Set<string>([
-  'Technical', 'Business', 'Personal', 'Project', 'Research', 'System', 'General',
+  'Technical',
+  'Business',
+  'Personal',
+  'Project',
+  'Research',
+  'System',
+  'General',
 ])
 
 export async function llmConstructNote(content: string): Promise<NoteStructure> {
@@ -96,9 +95,7 @@ Text: ${content}`
   try {
     const data = JSON.parse(stripFences(raw))
     const rawCategory = typeof data.category === 'string' ? data.category : 'General'
-    const category: NoteCategory = VALID_CATEGORIES.has(rawCategory)
-      ? (rawCategory as NoteCategory)
-      : 'General'
+    const category: NoteCategory = VALID_CATEGORIES.has(rawCategory) ? (rawCategory as NoteCategory) : 'General'
     return {
       keywords: Array.isArray(data.keywords) ? data.keywords : [],
       tags: Array.isArray(data.tags) ? data.tags : [],
@@ -128,7 +125,7 @@ Note B: ${candidateContent}`
 export interface MemoryOperation {
   action: 'NEW' | 'UPDATE' | 'DELETE' | 'NONE'
   fact: string
-  existingIdx?: number   // UPDATE/DELETE 时，对应 existingMemories 的整数下标（防幻觉）
+  existingIdx?: number // UPDATE/DELETE 时，对应 existingMemories 的整数下标（防幻觉）
   reason?: string
 }
 
@@ -137,9 +134,10 @@ export async function llmCrudDecision(
   assistantText: string,
   existingMemories: Array<{ idx: number; content: string }>
 ): Promise<MemoryOperation[]> {
-  const memoryList = existingMemories.length > 0
-    ? existingMemories.map(m => `[${m.idx}] ${m.content}`).join('\n')
-    : '（无已有相关记忆）'
+  const memoryList =
+    existingMemories.length > 0
+      ? existingMemories.map((m) => `[${m.idx}] ${m.content}`).join('\n')
+      : '（无已有相关记忆）'
 
   const prompt = `你是一个记忆管理 agent，负责分析对话内容并决定如何操作记忆库。
 
@@ -205,7 +203,7 @@ ${memoryList}
 // ── Merge judgment ───────────────────────────────────────────────────────────
 export async function llmShouldMerge(
   contentA: string,
-  contentB: string,
+  contentB: string
 ): Promise<{ shouldMerge: boolean; merged?: string }> {
   const prompt = `你是一个记忆去重助手，负责判断两条记忆是否表达了本质相同的信息。
 
@@ -247,7 +245,7 @@ export interface EvolvedNote {
 
 export async function llmEvolveNote(
   content: string,
-  linkedNotes: Array<{ id: string; content: string }>,
+  linkedNotes: Array<{ id: string; content: string }>
 ): Promise<EvolvedNote> {
   const linkedStr = linkedNotes.map((n) => `- ID: ${n.id}\n  Content: ${n.content}`).join('\n')
   const prompt = `A memory note has gained new connections. Update its context, tags, and decide whether to strengthen connections with specific neighbors.

@@ -31,10 +31,7 @@ export function getEvoCount(): number {
 
 export function incrementEvoCount(): number {
   const count = getEvoCount() + 1
-  fs.writeFileSync(
-    COUNTER_FILE,
-    JSON.stringify({ count, updatedAt: new Date().toISOString() }),
-  )
+  fs.writeFileSync(COUNTER_FILE, JSON.stringify({ count, updatedAt: new Date().toISOString() }))
   return count
 }
 

@@ -13,7 +13,7 @@ import * as os from 'os'
 import * as path from 'path'
 import { definePluginEntry } from 'openclaw/plugin-sdk/plugin-entry'
 import { addMemory, searchMemory, listMemories, mergeSimilarNotes, consolidateMemories } from './memory.js'
-import { ensureCollection, updateNoteContent, deleteNote, invalidateNote } from './storage.js'
+import { ensureCollection, updateNoteContent, invalidateNote } from './storage.js'
 import { encode } from './embedding.js'
 import { createHash } from 'crypto'
 
@@ -46,8 +46,12 @@ function register(api: {
   if (typeof api.registerMemoryCapability === 'function') {
     api.registerMemoryCapability({
       publicArtifacts: {
-        async listArtifacts(_p: unknown) { return { items: [] } },
-        async getArtifact(_p: unknown) { return null },
+        async listArtifacts(_p: unknown) {
+          return { items: [] }
+        },
+        async getArtifact(_p: unknown) {
+          return null
+        },
       },
       runtime: {
         async getMemorySearchManager(_params: unknown) {
@@ -88,7 +92,9 @@ function register(api: {
                     return { ok: false, error: (err as Error).message }
                   }
                 },
-                async probeEmbeddingAvailability() { return { ok: true } },
+                async probeEmbeddingAvailability() {
+                  return { ok: true }
+                },
                 async close() {},
               },
             }
@@ -254,90 +260,108 @@ function register(api: {
   // ── agent_end hook: auto-capture memories after each turn ─────────────────
   if (typeof (api as any).registerHook === 'function' || typeof (api as any).on === 'function') {
     const hookFn = (typeof (api as any).on === 'function' ? (api as any).on : (api as any).registerHook).bind(api)
-    hookFn('agent_end', async (event: {
-      messages?: Array<{ role: string; content: string | Array<{ type: string; text?: string }> }>
-      success?: boolean
-    }) => {
-      try {
-        if (!event.success) return
-        // Extract last user + assistant exchange
-        const msgs = event.messages || []
-        const lastUser = [...msgs].reverse().find(m => m.role === 'user')
-        const lastAssistant = [...msgs].reverse().find(m => m.role === 'assistant')
-        if (!lastUser || !lastAssistant) return
+    hookFn(
+      'agent_end',
+      async (event: {
+        messages?: Array<{ role: string; content: string | Array<{ type: string; text?: string }> }>
+        success?: boolean
+      }) => {
+        try {
+          if (!event.success) return
+          // Extract last user + assistant exchange
+          const msgs = event.messages || []
+          const lastUser = [...msgs].reverse().find((m) => m.role === 'user')
+          const lastAssistant = [...msgs].reverse().find((m) => m.role === 'assistant')
+          if (!lastUser || !lastAssistant) return
 
-        const userText = typeof lastUser.content === 'string'
-          ? lastUser.content
-          : lastUser.content.filter((b: any) => b.type === 'text').map((b: any) => b.text).join(' ')
-        const assistantText = typeof lastAssistant.content === 'string'
-          ? lastAssistant.content
-          : lastAssistant.content.filter((b: any) => b.type === 'text').map((b: any) => b.text).join(' ')
+          const userText =
+            typeof lastUser.content === 'string'
+              ? lastUser.content
+              : lastUser.content
+                  .filter((b: any) => b.type === 'text')
+                  .map((b: any) => b.text)
+                  .join(' ')
+          const assistantText =
+            typeof lastAssistant.content === 'string'
+              ? lastAssistant.content
+              : lastAssistant.content
+                  .filter((b: any) => b.type === 'text')
+                  .map((b: any) => b.text)
+                  .join(' ')
 
-        // ── Step 1: 规则前置过滤 ──────────────────────────────────────────────────
-        function shouldProcessTurn(text: string): boolean {
-          if (text.trim().length < 10) return false
-          const skipWords = ['好', '嗯', '明白', '明白了', '收到', 'ok', 'OK', '好的', '知道了', '了解', '谢谢', '谢']
-          const trimmed = text.trim()
-          if (skipWords.some(w => trimmed === w || trimmed === w + '。' || trimmed === w + '！')) return false
-          return true
-        }
-
-        if (!userText || !shouldProcessTurn(userText)) return
-
-        // ── Step 2: 检索 Top5 已有相关记忆 ─────────────────────────────────────────
-        const searchResults = await searchMemory(userText, 5, agentId)
-        const existingMemories = searchResults.map((r, idx) => ({
-          idx,
-          id: r.id,
-          content: r.content,
-        }))
-
-        // ── Step 3: 调用 llmCrudDecision ────────────────────────────────────────────
-        const { llmCrudDecision } = await import('./llm.js')
-        const operations = await llmCrudDecision(
-          userText,
-          assistantText,
-          existingMemories.map(m => ({ idx: m.idx, content: m.content }))
-        )
-
-        if (!operations || operations.length === 0) return
-
-        // ── Step 4: 执行 CRUD 操作 ───────────────────────────────────────────────
-        for (const op of operations) {
-          if (op.action === 'NEW') {
-            await addMemory(op.fact, agentId)
-            logger.info(`openclaw-amem: CRUD NEW: "${op.fact.slice(0, 60)}${op.fact.length > 60 ? '...' : ''}"` )
-          } else if (op.action === 'UPDATE' && op.existingIdx !== undefined) {
-            const target = existingMemories[op.existingIdx]
-            if (target) {
-              const newEmbedding = await encode(op.fact)
-              const hash = createHash('md5').update(op.fact).digest('hex')
-              await updateNoteContent(target.id, op.fact, newEmbedding, hash)
-              logger.info(`openclaw-amem: CRUD UPDATE id=${target.id.slice(0, 8)}: "${op.fact.slice(0, 60)}${op.fact.length > 60 ? '...' : ''}"` )
-            }
-          } else if (op.action === 'DELETE' && op.existingIdx !== undefined) {
-            const target = existingMemories[op.existingIdx]
-            if (target) {
-              await invalidateNote(target.id)
-              logger.info(`openclaw-amem: CRUD INVALIDATE id=${target.id.slice(0, 8)}: "${op.fact.slice(0, 60)}${op.fact.length > 60 ? '...' : ''}"` )
-            }
+          // ── Step 1: 规则前置过滤 ──────────────────────────────────────────────────
+          function shouldProcessTurn(text: string): boolean {
+            if (text.trim().length < 10) return false
+            const skipWords = ['好', '嗯', '明白', '明白了', '收到', 'ok', 'OK', '好的', '知道了', '了解', '谢谢', '谢']
+            const trimmed = text.trim()
+            if (skipWords.some((w) => trimmed === w || trimmed === w + '。' || trimmed === w + '！')) return false
+            return true
           }
-          // NONE: skip
-        }
 
-        // 异步触发碎片合并（不阻塞主流程）
-        const today = new Date().toISOString().slice(0, 10)
-        void mergeSimilarNotes(agentId).then((merged) => {
-          if (merged > 0) {
-            logger.info(`openclaw-amem: merged ${merged} similar notes today (${today})`)
+          if (!userText || !shouldProcessTurn(userText)) return
+
+          // ── Step 2: 检索 Top5 已有相关记忆 ─────────────────────────────────────────
+          const searchResults = await searchMemory(userText, 5, agentId)
+          const existingMemories = searchResults.map((r, idx) => ({
+            idx,
+            id: r.id,
+            content: r.content,
+          }))
+
+          // ── Step 3: 调用 llmCrudDecision ────────────────────────────────────────────
+          const { llmCrudDecision } = await import('./llm.js')
+          const operations = await llmCrudDecision(
+            userText,
+            assistantText,
+            existingMemories.map((m) => ({ idx: m.idx, content: m.content }))
+          )
+
+          if (!operations || operations.length === 0) return
+
+          // ── Step 4: 执行 CRUD 操作 ───────────────────────────────────────────────
+          for (const op of operations) {
+            if (op.action === 'NEW') {
+              await addMemory(op.fact, agentId)
+              logger.info(`openclaw-amem: CRUD NEW: "${op.fact.slice(0, 60)}${op.fact.length > 60 ? '...' : ''}"`)
+            } else if (op.action === 'UPDATE' && op.existingIdx !== undefined) {
+              const target = existingMemories[op.existingIdx]
+              if (target) {
+                const newEmbedding = await encode(op.fact)
+                const hash = createHash('md5').update(op.fact).digest('hex')
+                await updateNoteContent(target.id, op.fact, newEmbedding, hash)
+                logger.info(
+                  `openclaw-amem: CRUD UPDATE id=${target.id.slice(0, 8)}: "${op.fact.slice(0, 60)}${op.fact.length > 60 ? '...' : ''}"`
+                )
+              }
+            } else if (op.action === 'DELETE' && op.existingIdx !== undefined) {
+              const target = existingMemories[op.existingIdx]
+              if (target) {
+                await invalidateNote(target.id)
+                logger.info(
+                  `openclaw-amem: CRUD INVALIDATE id=${target.id.slice(0, 8)}: "${op.fact.slice(0, 60)}${op.fact.length > 60 ? '...' : ''}"`
+                )
+              }
+            }
+            // NONE: skip
           }
-        }).catch((e: Error) => {
-          logger.warn(`openclaw-amem: merge failed — ${e.message}`)
-        })
-      } catch (e) {
-        logger.warn(`openclaw-amem: agent_end CRUD hook failed — ${(e as Error).message}`)
-      }
-    }, { timeoutMs: 30000 })
+
+          // 异步触发碎片合并（不阻塞主流程）
+          const today = new Date().toISOString().slice(0, 10)
+          void mergeSimilarNotes(agentId)
+            .then((merged) => {
+              if (merged > 0) {
+                logger.info(`openclaw-amem: merged ${merged} similar notes today (${today})`)
+              }
+            })
+            .catch((e: Error) => {
+              logger.warn(`openclaw-amem: merge failed — ${e.message}`)
+            })
+        } catch (e) {
+          logger.warn(`openclaw-amem: agent_end CRUD hook failed — ${(e as Error).message}`)
+        }
+      },
+      { timeoutMs: 30000 }
+    )
     logger.info('openclaw-amem: agent_end CRUD decision hook registered')
   }
 
@@ -369,8 +393,12 @@ function register(api: {
   if (typeof api.registerService === 'function') {
     api.registerService({
       id: 'amem-plugin',
-      start() { logger.info(`openclaw-amem: started (backend: amem-qdrant, agentId: ${agentId})`) },
-      stop() { logger.info('openclaw-amem: stopped') },
+      start() {
+        logger.info(`openclaw-amem: started (backend: amem-qdrant, agentId: ${agentId})`)
+      },
+      stop() {
+        logger.info('openclaw-amem: stopped')
+      },
     })
   } else {
     logger.info(`openclaw-amem: initialized (backend: amem-qdrant, agentId: ${agentId})`)
@@ -381,7 +409,7 @@ const plugin = definePluginEntry({
   id: 'openclaw-amem',
   name: 'Memory (A-MEM v2)',
   description: 'A-MEM agentic memory backend for OpenClaw — Qdrant + Transformers.js, no Python required.',
-  register
+  register,
 })
 
 export default plugin

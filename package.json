@@ -11,7 +11,12 @@
   "scripts": {
     "build": "tsup src/index.ts --format cjs --out-dir dist",
     "dev": "tsup src/index.ts --format cjs --watch",
-    "consolidate": "tsx scripts/consolidate-memories.ts"
+    "consolidate": "tsx scripts/consolidate-memories.ts",
+    "lint": "eslint src",
+    "format": "prettier --check \"src/**/*.ts\" \"scripts/**/*.ts\"",
+    "format:fix": "prettier --write \"src/**/*.ts\" \"scripts/**/*.ts\"",
+    "check:boundaries": "tsx scripts/check-boundaries.ts",
+    "check": "npm run format && npm run lint && npm run check:boundaries"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.52.0",
@@ -22,8 +27,12 @@
     "uuid": "^14.0.0"
   },
   "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "eslint": "^10.4.1",
+    "prettier": "^3.8.3",
     "tsup": "^8.4.0",
     "tsx": "^4.21.0",
-    "typescript": "^5.8.0"
+    "typescript": "^5.8.0",
+    "typescript-eslint": "^8.60.1"
   }
 }

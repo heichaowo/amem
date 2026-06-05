@@ -9,7 +9,21 @@ import * as fs from 'fs'
 import * as path from 'path'
 import * as os from 'os'
 import { encode, cosineSimilarity } from './embedding.js'
-import { addNote, getNote, updateNote, queryByEmbedding, listNotes, countNotes, findByHash, updateNoteContent, deleteNote, getNotesByDatePrefix, replaceLinkReferences, invalidateNote, type MemoryNote } from './storage.js'
+import {
+  addNote,
+  getNote,
+  updateNote,
+  queryByEmbedding,
+  listNotes,
+  countNotes,
+  findByHash,
+  updateNoteContent,
+  deleteNote,
+  getNotesByDatePrefix,
+  replaceLinkReferences,
+  invalidateNote,
+  type MemoryNote,
+} from './storage.js'
 import { llmConstructNote, llmShouldLink, llmEvolveNote, llmShouldMerge } from './llm.js'
 import { shouldRunEvolution } from './evo-counter.js'
 
@@ -67,11 +81,7 @@ function bm25Score(state: BM25State, queryTokens: string[], k1 = 1.5, b = 0.75):
 }
 
 // ── RRF merge ─────────────────────────────────────────────────────────────────
-function rrfMerge(
-  embIds: string[],
-  bm25Ids: string[],
-  k = 60,
-): [string, number][] {
+function rrfMerge(embIds: string[], bm25Ids: string[], k = 60): [string, number][] {
   const scores = new Map<string, number>()
   embIds.forEach((id, rank) => scores.set(id, (scores.get(id) ?? 0) + 1 / (k + rank + 1)))
   bm25Ids.forEach((id, rank) => scores.set(id, (scores.get(id) ?? 0) + 1 / (k + rank + 1)))
@@ -324,14 +334,14 @@ export async function searchMemory(query: string, topK = 5, agentId = 'main'): P
   // RRF fusion with retrieval_count heat boost (Story 13-A)
   const merged = rrfMerge(
     embResults.map((r) => r.note.id),
-    bm25Ranked.map((r) => r[0]),
+    bm25Ranked.map((r) => r[0])
   )
 
   // Apply heat boost: retrieval_count makes frequently-retrieved notes rank higher
   const noteMap = new Map(allNotes.map((n) => [n.id, n]))
   const boostedMerged: [string, number][] = merged.map(([id, rrfScore]) => {
     const note = noteMap.get(id)
-    const recencyBoost = note ? (1 + 0.05 * Math.log(1 + (note.retrieval_count || 0))) : 1
+    const recencyBoost = note ? 1 + 0.05 * Math.log(1 + (note.retrieval_count || 0)) : 1
     return [id, rrfScore * recencyBoost]
   })
   boostedMerged.sort((a, b) => b[1] - a[1])
@@ -400,7 +410,7 @@ export async function mergeSimilarNotes(agentId: string): Promise<number> {
     for (let j = i + 1; j < notes.length; j++) {
       if (!notes[i].embedding.length || !notes[j].embedding.length) continue
       const sim = cosineSimilarity(notes[i].embedding, notes[j].embedding)
-      if (sim >= 0.80) {
+      if (sim >= 0.8) {
         pairs.push({ i, j, sim })
       }
     }
@@ -427,10 +437,7 @@ export async function mergeSimilarNotes(agentId: string): Promise<number> {
 
     if (result.shouldMerge && result.merged) {
       // Keep the longer note (more complete), update its content, delete the other
-      const [keepNote, dropNote] =
-        noteA.content.length >= noteB.content.length
-          ? [noteA, noteB]
-          : [noteB, noteA]
+      const [keepNote, dropNote] = noteA.content.length >= noteB.content.length ? [noteA, noteB] : [noteB, noteA]
 
       const newEmbedding = await encode(result.merged)
       const newHash = createHash('md5').update(result.merged).digest('hex')
@@ -453,125 +460,133 @@ export async function mergeSimilarNotes(agentId: string): Promise<number> {
  */
 export async function consolidateMemories(agentId: string, logger?: any): Promise<number> {
   const log = {
-    info: (msg: string) => logger ? logger.info(msg) : console.log(msg),
-    warn: (msg: string) => logger ? logger.warn(msg) : console.warn(msg),
-    error: (msg: string) => logger ? logger.error(msg) : console.error(msg),
+    info: (msg: string) => (logger ? logger.info(msg) : console.log(msg)),
+    warn: (msg: string) => (logger ? logger.warn(msg) : console.warn(msg)),
+    error: (msg: string) => (logger ? logger.error(msg) : console.error(msg)),
   }
 
-  log.info(`[Consolidation] Starting consolidation for agentId: ${agentId}`);
+  log.info(`[Consolidation] Starting consolidation for agentId: ${agentId}`)
 
   // 1. 加载记忆：获取所有活动（is_active: true）记忆条目
-  const allNotes = await listNotes(agentId);
-  log.info(`[Consolidation] Loaded ${allNotes.length} active notes.`);
+  const allNotes = await listNotes(agentId)
+  log.info(`[Consolidation] Loaded ${allNotes.length} active notes.`)
 
   // 2. 分类分组：根据 category 字段将记忆分组
-  const groups = new Map<string, MemoryNote[]>();
+  const groups = new Map<string, MemoryNote[]>()
   for (const note of allNotes) {
-    const category = note.category || 'General';
+    const category = note.category || 'General'
     if (!groups.has(category)) {
-      groups.set(category, []);
+      groups.set(category, [])
     }
-    groups.get(category)!.push(note);
+    groups.get(category)!.push(note)
   }
 
   // 3. 两两比对：在每个分类分组内计算余弦相似度
   interface CandidatePair {
-    noteA: MemoryNote;
-    noteB: MemoryNote;
-    similarity: number;
+    noteA: MemoryNote
+    noteB: MemoryNote
+    similarity: number
   }
-  const candidates: CandidatePair[] = [];
+  const candidates: CandidatePair[] = []
 
   for (const [category, groupNotes] of groups.entries()) {
-    log.info(`[Consolidation] Category "${category}" has ${groupNotes.length} notes.`);
+    log.info(`[Consolidation] Category "${category}" has ${groupNotes.length} notes.`)
     for (let i = 0; i < groupNotes.length; i++) {
       for (let j = i + 1; j < groupNotes.length; j++) {
-        const noteA = groupNotes[i];
-        const noteB = groupNotes[j];
-        if (!noteA.embedding.length || !noteB.embedding.length) continue;
-        const sim = cosineSimilarity(noteA.embedding, noteB.embedding);
+        const noteA = groupNotes[i]
+        const noteB = groupNotes[j]
+        if (!noteA.embedding.length || !noteB.embedding.length) continue
+        const sim = cosineSimilarity(noteA.embedding, noteB.embedding)
         if (sim >= 0.75) {
-          candidates.push({ noteA, noteB, similarity: sim });
+          candidates.push({ noteA, noteB, similarity: sim })
         }
       }
     }
   }
 
   // 4. 筛选候选对：按相似度从高到低排序，限制最多 15 对
-  candidates.sort((a, b) => b.similarity - a.similarity);
-  const topPairs = candidates.slice(0, 15);
-  log.info(`[Consolidation] Found ${candidates.length} candidate pairs with similarity >= 0.75. Processing top ${topPairs.length}.`);
+  candidates.sort((a, b) => b.similarity - a.similarity)
+  const topPairs = candidates.slice(0, 15)
+  log.info(
+    `[Consolidation] Found ${candidates.length} candidate pairs with similarity >= 0.75. Processing top ${topPairs.length}.`
+  )
 
-  const processedIds = new Set<string>();
-  let mergedCount = 0;
+  const processedIds = new Set<string>()
+  let mergedCount = 0
 
   // Helper: append log to log file
   function logMergeToFile(keepId: string, dropId: string, mergedContent: string) {
-    const logDir = path.join(os.homedir(), '.openclaw', 'logs');
-    const logFile = path.join(logDir, 'amem-consolidate.log');
-    const timestamp = new Date().toISOString();
-    const logMsg = `[${timestamp}] Consolidated: KeepNote ${keepId} and DropNote ${dropId}. Merged length: ${mergedContent.length} chars.\n`;
-    
+    const logDir = path.join(os.homedir(), '.openclaw', 'logs')
+    const logFile = path.join(logDir, 'amem-consolidate.log')
+    const timestamp = new Date().toISOString()
+    const logMsg = `[${timestamp}] Consolidated: KeepNote ${keepId} and DropNote ${dropId}. Merged length: ${mergedContent.length} chars.\n`
+
     try {
-      fs.mkdirSync(logDir, { recursive: true });
-      fs.appendFileSync(logFile, logMsg, 'utf8');
+      fs.mkdirSync(logDir, { recursive: true })
+      fs.appendFileSync(logFile, logMsg, 'utf8')
     } catch (err) {
-      log.error(`[Consolidation] Failed to write log: ${(err as Error).message}`);
+      log.error(`[Consolidation] Failed to write log: ${(err as Error).message}`)
     }
   }
 
   // 5. LLM 融合决策与信息继承
   for (const { noteA, noteB, similarity } of topPairs) {
     if (processedIds.has(noteA.id) || processedIds.has(noteB.id)) {
-      log.info(`[Consolidation] Skipping pair (${noteA.id.slice(0, 8)}, ${noteB.id.slice(0, 8)}) as one or both already merged.`);
-      continue;
+      log.info(
+        `[Consolidation] Skipping pair (${noteA.id.slice(0, 8)}, ${noteB.id.slice(0, 8)}) as one or both already merged.`
+      )
+      continue
     }
 
-    log.info(`[Consolidation] Evaluating pair (${noteA.id.slice(0, 8)}, ${noteB.id.slice(0, 8)}) with sim ${similarity.toFixed(4)}...`);
-    const mergeDecision = await llmShouldMerge(noteA.content, noteB.content);
+    log.info(
+      `[Consolidation] Evaluating pair (${noteA.id.slice(0, 8)}, ${noteB.id.slice(0, 8)}) with sim ${similarity.toFixed(4)}...`
+    )
+    const mergeDecision = await llmShouldMerge(noteA.content, noteB.content)
 
     if (mergeDecision.shouldMerge && mergeDecision.merged) {
-      log.info(`  -> LLM decision: MERGE!`);
+      log.info(`  -> LLM decision: MERGE!`)
 
       // 比较两条记忆的长度，将较长的保留作为主节点 (KeepNote)
-      const [keepNote, dropNote] = noteA.content.length >= noteB.content.length
-        ? [noteA, noteB]
-        : [noteB, noteA];
+      const [keepNote, dropNote] = noteA.content.length >= noteB.content.length ? [noteA, noteB] : [noteB, noteA]
 
-      log.info(`  -> KeepNote: ${keepNote.id.slice(0, 8)} (len: ${keepNote.content.length}), DropNote: ${dropNote.id.slice(0, 8)} (len: ${dropNote.content.length})`);
+      log.info(
+        `  -> KeepNote: ${keepNote.id.slice(0, 8)} (len: ${keepNote.content.length}), DropNote: ${dropNote.id.slice(0, 8)} (len: ${dropNote.content.length})`
+      )
 
-      const oldContext = keepNote.context;
-      const oldTags = [...keepNote.tags];
+      const oldContext = keepNote.context
+      const oldTags = [...keepNote.tags]
 
       // 内容更新
-      keepNote.content = mergeDecision.merged;
+      keepNote.content = mergeDecision.merged
 
       // 元数据继承：
       // - 合并 tags 与 keywords（合并后去重）
-      keepNote.tags = Array.from(new Set([...keepNote.tags, ...dropNote.tags]));
-      keepNote.keywords = Array.from(new Set([...keepNote.keywords, ...dropNote.keywords]));
+      keepNote.tags = Array.from(new Set([...keepNote.tags, ...dropNote.tags]))
+      keepNote.keywords = Array.from(new Set([...keepNote.keywords, ...dropNote.keywords]))
 
       // - 合并 links 链接数组（去重且排除自身 and DropNote）
-      keepNote.links = Array.from(new Set([...keepNote.links, ...dropNote.links]))
-        .filter((id) => id !== keepNote.id && id !== dropNote.id);
+      keepNote.links = Array.from(new Set([...keepNote.links, ...dropNote.links])).filter(
+        (id) => id !== keepNote.id && id !== dropNote.id
+      )
 
       // - retrieval_count 累加
-      keepNote.retrieval_count = (keepNote.retrieval_count || 0) + (dropNote.retrieval_count || 0);
+      keepNote.retrieval_count = (keepNote.retrieval_count || 0) + (dropNote.retrieval_count || 0)
 
       // - last_accessed 取最新的时间戳
-      const keepAccessTime = new Date(keepNote.last_accessed || keepNote.timestamp).getTime();
-      const dropAccessTime = new Date(dropNote.last_accessed || dropNote.timestamp).getTime();
-      keepNote.last_accessed = keepAccessTime >= dropAccessTime
-        ? (keepNote.last_accessed || keepNote.timestamp)
-        : (dropNote.last_accessed || dropNote.timestamp);
+      const keepAccessTime = new Date(keepNote.last_accessed || keepNote.timestamp).getTime()
+      const dropAccessTime = new Date(dropNote.last_accessed || dropNote.timestamp).getTime()
+      keepNote.last_accessed =
+        keepAccessTime >= dropAccessTime
+          ? keepNote.last_accessed || keepNote.timestamp
+          : dropNote.last_accessed || dropNote.timestamp
 
       // 重算 embedding 与 MD5 hash
-      const embedText = buildEmbedText(keepNote);
-      keepNote.embedding = await encode(embedText);
-      keepNote.hash = createHash('md5').update(keepNote.content).digest('hex');
+      const embedText = buildEmbedText(keepNote)
+      keepNote.embedding = await encode(embedText)
+      keepNote.hash = createHash('md5').update(keepNote.content).digest('hex')
 
       // 将 DropNote 的合并事件记录在 KeepNote 的 evolution_history 中
-      keepNote.evolution_history = keepNote.evolution_history || [];
+      keepNote.evolution_history = keepNote.evolution_history || []
       keepNote.evolution_history.push({
         triggeredBy: dropNote.id,
         triggeredAt: new Date().toISOString(),
@@ -580,31 +595,31 @@ export async function consolidateMemories(agentId: string, logger?: any): Promis
         oldTags,
         newTags: keepNote.tags,
         action: 'consolidate',
-      });
+      })
 
       // 更新 KeepNote
-      await updateNote(keepNote);
+      await updateNote(keepNote)
 
       // 软删除 DropNote
-      await invalidateNote(dropNote.id);
+      await invalidateNote(dropNote.id)
 
       // 级联更新 links
-      await replaceLinkReferences(dropNote.id, keepNote.id, agentId);
+      await replaceLinkReferences(dropNote.id, keepNote.id, agentId)
 
       // 写入日志
-      logMergeToFile(keepNote.id, dropNote.id, keepNote.content);
+      logMergeToFile(keepNote.id, dropNote.id, keepNote.content)
 
-      processedIds.add(keepNote.id);
-      processedIds.add(dropNote.id);
-      mergedCount++;
+      processedIds.add(keepNote.id)
+      processedIds.add(dropNote.id)
+      mergedCount++
     } else {
-      log.info(`  -> LLM decision: DO NOT MERGE.`);
+      log.info(`  -> LLM decision: DO NOT MERGE.`)
     }
 
     // Rate limit sleep
-    await sleep(200);
+    await sleep(200)
   }
 
-  log.info(`[Consolidation] Completed consolidation run. Merged ${mergedCount} pairs.`);
-  return mergedCount;
+  log.info(`[Consolidation] Completed consolidation run. Merged ${mergedCount} pairs.`)
+  return mergedCount
 }
