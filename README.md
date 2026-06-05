@@ -17,14 +17,14 @@ An OpenClaw plugin that integrates the **A-MEM** (Agentic Memory) system — fea
 
 *   🔄 **Dynamic Memory Network** — Inspired by Zettelkasten. Memories are stored as nodes in a graph, not just flat vector rows.
 *   🔗 **Automatic Link Generation** — New memories automatically link bidirectionally to existing related memories via embedding similarity + LLM verification.
-*   🧬 **Memory Evolution & Strengthening** (Stories 13-B, 13-D) — Linked memories update context/tags/embeddings when new details arrive. Added `strengthen` action allowing memories to actively request link enforcement and tag propagation.
-*   🚦 **LLM CRUD Decision Gate** (Story 11) — Hooked into OpenClaw's `agent_end` dialog termination. Analyses user-assistant dialogue context, running `NEW` / `UPDATE` / `DELETE` / `NONE` decisions to keep memory clean.
-*   🧹 **Same-Day Semantic Merger** (Story 12) — Automatically merge semantic duplicates written during the same day ($\ge 0.80$).
-*   📅 **In-Process Daily Consolidation** (Story 16) — Endogenous in-process `setTimeout` scheduler running at 02:30 AM. Groups notes by `category`, merges semantic duplicates ($\ge 0.75$) into clean unified knowledge notes, and **cascades all link references** automatically to preserve graph topology.
-*   ⏳ **Temporal Invalidation & Soft-Delete** (Story 15) — Outdated/conflicting memories are marked `is_active: false` (soft-deleted) and excluded from searches using zero-migration Qdrant filters.
-*   🔥 **Retrieval Heat Tracking** (Story 13-A) — Incorporates `retrieval_count` and `last_accessed` timestamps in hybrid scoring:
+*   🧬 **Memory Evolution & Strengthening** — Linked memories update context/tags/embeddings when new details arrive. Supports active link strengthening and tag propagation.
+*   🚦 **LLM CRUD Decision Gate** — Hooked into OpenClaw's `agent_end` dialog termination. Analyses user-assistant dialogue context, running `NEW` / `UPDATE` / `DELETE` / `NONE` decisions to keep memory clean.
+*   🧹 **Same-Day Semantic Merger** — Automatically merge semantic duplicates written during the same day ($\ge 0.80$).
+*   📅 **In-Process Daily Consolidation** — Endogenous in-process `setTimeout` scheduler running at 02:30 AM. Groups notes by `category`, merges semantic duplicates ($\ge 0.75$) into clean unified knowledge notes, and **cascades all link references** automatically to preserve graph topology.
+*   ⏳ **Temporal Invalidation & Soft-Delete** — Outdated/conflicting memories are marked `is_active: false` (soft-deleted) and excluded from searches using zero-migration Qdrant filters.
+*   🔥 **Retrieval Heat Tracking** — Incorporates `retrieval_count` and `last_accessed` timestamps in hybrid scoring:
     $$\text{Final Score} = \text{RRF Score} \times (1 + 0.05 \times \ln(1 + \text{retrieval\_count}))$$
-*   🛡️ **Strict Quality Controls** (Story 17) — Full Vitest test coverage for embeddings (mocked), storage, and link-cascading consolidation, integrated into ESLint + Prettier + import boundary CI checks running on GitHub Actions.
+*   🛡️ **Strict Quality Controls** — Full Vitest test coverage for embeddings (mocked), storage, and link-cascading consolidation, integrated into ESLint + Prettier + import boundary CI checks running on GitHub Actions.
 
 ---
 
