@@ -31,12 +31,12 @@ $$\text{Final Score} = \text{RRF Score} \times \left(1 + 0.05 \times \ln\left(1 
 
 ## Why A-MEM? (vs Traditional RAG) 🎯
 
-| Dimension (维度) | Traditional RAG (传统 RAG) | A-MEM (Zettelkasten Graph) |
+| Dimension | Traditional RAG | A-MEM (Zettelkasten Graph) |
 | :--- | :--- | :--- |
-| **Retrieval Mode (检索方式)** | Single-vector similarity (only matches keywords or semantic distance) | **BM25 + Dense Vector Hybrid Search with RRF Fusion** |
-| **Fact Evolution (事实演化)** | Static chunking (cannot update historical entries when new facts arrive) | **Dynamic Attribute Evolution & Connection Strengthening** |
-| **Temporal Conflicts (时序冲突)** | Recalls contradictory facts simultaneously (causing agent hallucination) | **`is_active` soft-invalidation** (shields outdated facts from queries) |
-| **Memory Bloat (记忆膨胀)** | Fragmented memories stack up infinitely, driving up Token costs | **In-process Daily Consolidation** (聚类合并, merges semantic duplicates) |
+| **Retrieval Mode** | Single-vector similarity (only matches keywords or semantic distance) | **BM25 + Dense Vector Hybrid Search with RRF Fusion** |
+| **Fact Evolution** | Static chunking (cannot update historical entries when new facts arrive) | **Dynamic Attribute Evolution & Connection Strengthening** |
+| **Temporal Conflicts** | Recalls contradictory facts simultaneously (causing agent hallucination) | **`is_active` soft-invalidation** (shields outdated facts from queries) |
+| **Memory Bloat** | Fragmented memories stack up infinitely, driving up Token costs | **In-process Daily Consolidation** (merges semantic duplicates) |
 
 ---
 
