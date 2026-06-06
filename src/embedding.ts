@@ -5,9 +5,7 @@
  */
 
 // Dynamic import to avoid issues with CJS bundling
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 let pipeline: any = null
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 let extractor: any = null
 
 const MODEL_NAME = 'Xenova/paraphrase-multilingual-MiniLM-L12-v2'
@@ -68,7 +66,6 @@ export async function encode(text: string): Promise<number[]> {
   }
 
   // Fallback: manual mean pool if result is nested
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const tensor = result as any
   if (tensor.dims && tensor.dims.length === 3) {
     // shape: [1, seq_len, dim]
