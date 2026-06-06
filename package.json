@@ -21,8 +21,11 @@
     "check": "npm run format && npm run lint && npm run check:boundaries && npm run test"
   },
   "dependencies": {
+    "@node-rs/jieba": "^2.0.1",
     "@anthropic-ai/sdk": "^0.52.0",
     "@huggingface/transformers": "^3.5.0",
+    "@node-rs/jieba": "^2.0.1",
+    "@node-rs/jieba-darwin-arm64": "^2.0.1",
     "@qdrant/js-client-rest": "^1.18.0",
     "@types/uuid": "^10.0.0",
     "chromadb": "^1.9.2",

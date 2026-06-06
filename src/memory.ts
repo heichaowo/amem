@@ -26,10 +26,34 @@ import {
 } from './storage.js'
 import { llmConstructNote, llmShouldLink, llmEvolveNote, llmShouldMerge } from './llm.js'
 import { shouldRunEvolution } from './evo-counter.js'
+import { Jieba } from '@node-rs/jieba'
 
 // ── BM25 helpers ──────────────────────────────────────────────────────────────
+
+// Lazy-initialized Jieba instance (Story 21: Chinese word segmentation)
+let _jieba: Jieba | null = null
+function getJieba(): Jieba {
+  if (!_jieba) _jieba = new Jieba()
+  return _jieba
+}
+
+/**
+ * Tokenize text for BM25 indexing.
+ * Story 21: Chinese text is segmented with Jieba (HMM mode) before indexing.
+ * Non-Chinese text falls back to whitespace/word-boundary splitting.
+ * Mixed text (e.g. "文静TTS参数") is handled correctly — Jieba preserves
+ * ASCII tokens as-is while segmenting CJK spans.
+ */
 function simpleTokenize(text: string): string[] {
-  return Array.from(text.toLowerCase().matchAll(/[\w\u4e00-\u9fff]+/g)).map((m) => m[0])
+  const hasChinese = /[\u4e00-\u9fff]/.test(text)
+  if (hasChinese) {
+    // Jieba cut with HMM=true for unknown word recognition
+    return getJieba()
+      .cut(text, true)
+      .map((t) => t.toLowerCase().trim())
+      .filter((t) => t.length > 0 && /[\w\u4e00-\u9fff]/.test(t))
+  }
+  return Array.from(text.toLowerCase().matchAll(/[\w]+/g)).map((m) => m[0])
 }
 
 interface BM25State {
