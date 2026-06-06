@@ -22,9 +22,11 @@ An OpenClaw plugin that integrates the **A-MEM** (Agentic Memory) system — fea
 *   🧹 **Same-Day Semantic Merger** — Automatically merge semantic duplicates written during the same day (≥ 0.80 cosine similarity).
 *   📅 **In-Process Daily Consolidation** — Endogenous in-process `setTimeout` scheduler running at 02:30 AM. Groups notes by `category`, merges semantic duplicates (≥ 0.75) into clean unified knowledge notes, and **cascades all link references** automatically to preserve graph topology.
 *   ⏳ **Temporal Invalidation & Soft-Delete** — Outdated/conflicting memories are marked `is_active: false` (soft-deleted) and excluded from searches using zero-migration Qdrant filters.
-*   🔥 **Retrieval Heat Tracking** — Incorporates `retrieval_count` and `last_accessed` timestamps in hybrid scoring. Frequently retrieved memories receive a logarithmic heat boost:
+*   🔥 **Retrieval Heat Tracking with Time Decay** — Incorporates `retrieval_count` and `last_accessed` timestamps in hybrid scoring. Frequently retrieved memories receive a logarithmic heat boost, dampened by elapsed time since last access so stale memories do not permanently outrank fresh ones:
 
-$$\text{Final Score} = \text{RRF Score} \times \left(1 + 0.05 \times \ln\left(1 + \text{retrieval count}\right)\right)$$
+$$\text{Final Score} = \text{RRF Score} \times \left(1 + \frac{0.05 \times \ln\left(1 + \text{retrieval\_count}\right)}{\text{age\_days} + 1}\right)$$
+
+  A note last accessed 60 days ago with 10 retrievals gets boost ≈ 1.002; the same note accessed today gets ≈ 1.060.
 
 *   🔍 **2-hop Graph Traversal with Relevance Gate** — After vector retrieval, BFS walks the link graph up to 2 hops from each anchor result. Only nodes passing an embedding relevance gate (cosine similarity ≥ 0.25 against the query) are admitted, preventing noise from distant graph neighborhoods.
 *   🀄 **Chinese-Optimized BM25** — The BM25 pipeline uses [Jieba](https://github.com/fxsjy/jieba) (via `@node-rs/jieba`) for CJK word segmentation instead of character-level splitting, dramatically improving recall for Chinese queries. English and mixed-language text fall back to whitespace tokenization automatically.
@@ -41,6 +43,7 @@ $$\text{Final Score} = \text{RRF Score} \times \left(1 + 0.05 \times \ln\left(1 
 | **Fact Evolution** | Static chunking — cannot update historical entries | **Dynamic Attribute Evolution & Connection Strengthening** |
 | **Temporal Conflicts** | Recalls contradictory facts simultaneously | **`is_active` soft-invalidation** shields outdated facts |
 | **Memory Bloat** | Fragmented memories stack up infinitely | **Daily Consolidation** merges semantic duplicates |
+| **Stale Memory Suppression** | High-retrieval old memories permanently outrank fresh ones | **Time-decayed heat boost** — age dampens retrieval_count influence |
 | **Graph Noise** | N/A | **BFS Relevance Gate** filters low-similarity linked nodes |
 
 ---
@@ -217,6 +220,7 @@ Test coverage includes:
 | `test/memory.test.ts` | Consolidation & cascading link updates |
 | `test/tokenize.test.ts` | Jieba Chinese segmentation, mixed-language, edge cases |
 | `test/bfs-gate.test.ts` | BFS relevance gate: filter / admit / disable |
+| `test/heat-decay.test.ts` | Time-decay heat boost: fresh > stale ranking, decay magnitude |
 
 ---
 
