@@ -24,7 +24,9 @@ An OpenClaw plugin that integrates the **A-MEM** (Agentic Memory) system — fea
 *   ⏳ **Temporal Invalidation & Soft-Delete** — Outdated/conflicting memories are marked `is_active: false` (soft-deleted) and excluded from searches using zero-migration Qdrant filters.
 *   🔥 **Retrieval Heat Tracking with Time Decay** — Incorporates `retrieval_count` and `last_accessed` timestamps in hybrid scoring. Frequently retrieved memories receive a logarithmic heat boost, dampened by elapsed time since last access so stale memories do not permanently outrank fresh ones:
 
-$$\text{Final Score} = \text{RRF Score} \times \left(1 + \frac{0.05 \times \ln\left(1 + \text{retrieval\_count}\right)}{\text{age\_days} + 1}\right)$$
+```
+Final Score = RRF Score × (1 + 0.05 × ln(1 + retrieval_count) / (age_days + 1))
+```
 
   A note last accessed 60 days ago with 10 retrievals gets boost ≈ 1.002; the same note accessed today gets ≈ 1.060.
 
