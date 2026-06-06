@@ -344,9 +344,15 @@ export async function searchMemory(
   query: string,
   topK = 5,
   agentId = 'main',
-  opts?: { useBfs?: boolean }
+  opts?: {
+    useBfs?: boolean
+    // Story 22: BFS relevance gate — linked notes with cos-sim below this threshold
+    // are skipped to reduce noise. Set to 0 to disable (admit all linked notes).
+    bfsSimThreshold?: number
+  }
 ): Promise<SearchResult[]> {
   const useBfs = opts?.useBfs !== false // default true
+  const bfsSimThreshold = opts?.bfsSimThreshold ?? 0.25 // Story 22 default
   const total = await countNotes(agentId)
   if (total === 0) return []
 
@@ -398,6 +404,11 @@ export async function searchMemory(
       // Only include active notes (is_active !== false)
       const linked = noteMap.get(linkedId)
       if (!linked || linked.is_active === false) continue
+      // Story 22: relevance gate — skip BFS nodes too far from the query
+      if (bfsSimThreshold > 0 && linked.embedding) {
+        const sim = cosineSimilarity(queryEmbedding, linked.embedding)
+        if (sim < bfsSimThreshold) continue
+      }
       bfsExtra.push(linkedId)
       bfsQueue.push({ id: linkedId, hop: item.hop + 1 })
       if (bfsExtra.length >= BFS_MAX_EXPAND) break
