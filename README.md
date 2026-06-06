@@ -19,14 +19,16 @@ An OpenClaw plugin that integrates the **A-MEM** (Agentic Memory) system — fea
 *   🔗 **Automatic Link Generation** — New memories automatically link bidirectionally to existing related memories via embedding similarity + LLM verification.
 *   🧬 **Memory Evolution & Strengthening** — Linked memories update context/tags/embeddings when new details arrive. Supports active link strengthening and tag propagation.
 *   🚦 **LLM CRUD Decision Gate** — Hooked into OpenClaw's `agent_end` dialog termination. Analyses user-assistant dialogue context, running `NEW` / `UPDATE` / `DELETE` / `NONE` decisions to keep memory clean.
-*   🧹 **Same-Day Semantic Merger** — Automatically merge semantic duplicates written during the same day ($\ge 0.80$).
-*   📅 **In-Process Daily Consolidation** — Endogenous in-process `setTimeout` scheduler running at 02:30 AM. Groups notes by `category`, merges semantic duplicates ($\ge 0.75$) into clean unified knowledge notes, and **cascades all link references** automatically to preserve graph topology.
+*   🧹 **Same-Day Semantic Merger** — Automatically merge semantic duplicates written during the same day (≥ 0.80 cosine similarity).
+*   📅 **In-Process Daily Consolidation** — Endogenous in-process `setTimeout` scheduler running at 02:30 AM. Groups notes by `category`, merges semantic duplicates (≥ 0.75) into clean unified knowledge notes, and **cascades all link references** automatically to preserve graph topology.
 *   ⏳ **Temporal Invalidation & Soft-Delete** — Outdated/conflicting memories are marked `is_active: false` (soft-deleted) and excluded from searches using zero-migration Qdrant filters.
-*   🔥 **Retrieval Heat Tracking** — Incorporates `retrieval_count` and `last_accessed` timestamps in hybrid scoring. Frequently retrieved memories receive a logarithmic heat boost to bubble up relevant context:
+*   🔥 **Retrieval Heat Tracking** — Incorporates `retrieval_count` and `last_accessed` timestamps in hybrid scoring. Frequently retrieved memories receive a logarithmic heat boost:
 
 $$\text{Final Score} = \text{RRF Score} \times \left(1 + 0.05 \times \ln\left(1 + \text{retrieval count}\right)\right)$$
-*   🔍 **2-hop Graph Traversal** — After vector retrieval, BFS walks the link graph up to 2 hops from each anchor result, surfacing contextually related memories that scored too low for direct retrieval. Recovers associations that are semantically distant but graph-connected.
-*   🛡️ **Strict Quality Controls** — Full Vitest test coverage for embeddings (mocked), storage, and link-cascading consolidation, integrated into ESLint + Prettier + import boundary CI checks running on GitHub Actions.
+
+*   🔍 **2-hop Graph Traversal with Relevance Gate** — After vector retrieval, BFS walks the link graph up to 2 hops from each anchor result. Only nodes passing an embedding relevance gate (cosine similarity ≥ 0.25 against the query) are admitted, preventing noise from distant graph neighborhoods.
+*   🀄 **Chinese-Optimized BM25** — The BM25 pipeline uses [Jieba](https://github.com/fxsjy/jieba) (via `@node-rs/jieba`) for CJK word segmentation instead of character-level splitting, dramatically improving recall for Chinese queries. English and mixed-language text fall back to whitespace tokenization automatically.
+*   🛡️ **Strict Quality Controls** — Full Vitest test coverage for embeddings, storage, link-cascading consolidation, tokenization, and BFS gate behavior, integrated into ESLint + Prettier + import boundary CI checks running on GitHub Actions.
 
 ---
 
@@ -34,10 +36,12 @@ $$\text{Final Score} = \text{RRF Score} \times \left(1 + 0.05 \times \ln\left(1 
 
 | Dimension | Traditional RAG | A-MEM (Zettelkasten Graph) |
 | :--- | :--- | :--- |
-| **Retrieval Mode** | Single-vector similarity (only matches keywords or semantic distance) | **BM25 + Dense Vector Hybrid Search with RRF Fusion + 2-hop Graph Expansion** |
-| **Fact Evolution** | Static chunking (cannot update historical entries when new facts arrive) | **Dynamic Attribute Evolution & Connection Strengthening** |
-| **Temporal Conflicts** | Recalls contradictory facts simultaneously (causing agent hallucination) | **`is_active` soft-invalidation** (shields outdated facts from queries) |
-| **Memory Bloat** | Fragmented memories stack up infinitely, driving up Token costs | **In-process Daily Consolidation** (merges semantic duplicates) |
+| **Retrieval Mode** | Single-vector similarity | **BM25 + Dense Vector Hybrid (RRF) + 2-hop Graph Expansion** |
+| **Chinese Recall** | Character-level n-gram / single char split | **Jieba word segmentation for accurate CJK BM25 indexing** |
+| **Fact Evolution** | Static chunking — cannot update historical entries | **Dynamic Attribute Evolution & Connection Strengthening** |
+| **Temporal Conflicts** | Recalls contradictory facts simultaneously | **`is_active` soft-invalidation** shields outdated facts |
+| **Memory Bloat** | Fragmented memories stack up infinitely | **Daily Consolidation** merges semantic duplicates |
+| **Graph Noise** | N/A | **BFS Relevance Gate** filters low-similarity linked nodes |
 
 ---
 
@@ -46,10 +50,10 @@ $$\text{Final Score} = \text{RRF Score} \times \left(1 + 0.05 \times \ln\left(1 
 A-MEM is an advanced memory architecture for LLM agents inspired by the Zettelkasten method. Unlike traditional flat vector databases, A-MEM maintains memory as a living, self-evolving semantic graph:
 
 1.  **Note Construction** — On write, LLM extracts keywords, tags, a context summary, and categorizes the note (Technical, Business, Personal, Project, Research, System, General).
-2.  **Link Generation** — Retrieves top-6 candidates; LLM judges whether to link bidirectionally (similarity $> 0.3$).
+2.  **Link Generation** — Retrieves top-6 candidates; LLM judges whether to link bidirectionally (similarity > 0.3).
 3.  **Memory Evolution & Strengthening** — Up to 3 linked memories have their attributes evolved based on the new context, potentially triggering additional links.
-4.  **Hybrid Retrieval** — Fuses vector search (Transformers.js ONNX local `multilingual-e5-small`) and BM25 using Reciprocal Rank Fusion (RRF), boosted by retrieval frequency (heat).
-5.  **2-hop BFS Graph Expansion** — After RRF top-K selection, BFS traverses the link graph up to 2 hops, appending up to 8 contextually linked notes that may be semantically distant but graph-connected. This is the key architectural advantage over flat vector memory systems like mem0.
+4.  **Hybrid Retrieval** — Fuses vector search (Transformers.js ONNX local `paraphrase-multilingual-MiniLM-L12-v2`, 384-dim) and BM25 using Reciprocal Rank Fusion (RRF), boosted by retrieval frequency (heat).
+5.  **2-hop BFS Graph Expansion** — After RRF top-K selection, BFS traverses the link graph up to 2 hops, appending up to 8 contextually linked notes that may be semantically distant but graph-connected. Each candidate passes an embedding relevance gate (cos-sim ≥ 0.25) before admission. This is the key architectural advantage over flat vector memory systems like mem0.
 
 Academic Paper: _A-MEM: Agentic Memory for LLM Agents_ — [arXiv:2502.12110](https://arxiv.org/abs/2502.12110) (NeurIPS 2025)
 
@@ -68,8 +72,37 @@ OpenClaw Agent
                        Qdrant     Transformers.js    LLM (Anthropic)
                     (vector store)  (ONNX embed)   (CRUD decision
                       :6333        384-dim local    + link judgment
-                   agent_id ISO                    + evolution)
+                   agent_id ISO   + Jieba BM25     + evolution)
 ```
+
+---
+
+## Smoke Test Results
+
+Internal regression test suite (`amem-smoketest`) — 25 QA pairs across 5 categories, evaluated 2026-06-05:
+
+| Metric | Value |
+| :--- | :--- |
+| **Average Score** | **4.56 / 5.0** |
+| **Hit@1** | **64.0%** |
+| **Hit@3** | **76.0%** |
+| **MRR** | **0.693** |
+
+| Category | Avg Score | Notes |
+| :--- | :--- | :--- |
+| fact | 5.00 / 5.0 | — |
+| temporal | 5.00 / 5.0 | — |
+| bfs | 5.00 / 5.0 | — |
+| multihop | 4.20 / 5.0 | — |
+| semantic | 3.60 / 5.0 | Active improvement area (Story 21 Chinese BM25) |
+
+**BFS ablation** (10 questions, bfs + multihop categories):
+
+| | BFS OFF | BFS ON | Delta |
+|:---|:---:|:---:|:---:|
+| Average Score | 3.00 | 5.00 | **+2.00** |
+| bfs category | 2.00 | 5.00 | **+3.00** |
+| multihop category | 4.00 | 5.00 | **+1.00** |
 
 ---
 
@@ -147,7 +180,7 @@ memory_add(text="vendor profile")
 ```
 
 ### `memory_search`
-Searches long-term memories using fused RRF (BM25 + Cosine similarity) with heat-based ranking.
+Searches long-term memories using fused RRF (BM25 + Cosine similarity) with heat-based ranking and 2-hop BFS graph expansion.
 
 ```js
 memory_search(query="database configuration", limit=5)
@@ -175,9 +208,34 @@ npm run test               # Run Vitest unit & integration tests
 npm run check              # Run entire validation suite (format + lint + boundaries + test)
 ```
 
+Test coverage includes:
+
+| Test File | What It Covers |
+|-----------|----------------|
+| `test/embedding.test.ts` | ONNX embedding shape & cosine similarity |
+| `test/storage.test.ts` | Qdrant note add / soft-delete (live integration) |
+| `test/memory.test.ts` | Consolidation & cascading link updates |
+| `test/tokenize.test.ts` | Jieba Chinese segmentation, mixed-language, edge cases |
+| `test/bfs-gate.test.ts` | BFS relevance gate: filter / admit / disable |
+
 ---
 
-## Citation & Reference
+## References & Prior Work
+
+This plugin implements and extends the following prior work:
+
+| Reference | Role |
+|-----------|------|
+| Xu et al., _A-MEM: Agentic Memory for LLM Agents_, NeurIPS 2025 · [arXiv:2502.12110](https://arxiv.org/abs/2502.12110) | Core architecture: note construction, link generation, memory evolution, RRF hybrid retrieval |
+| Robertson & Zaragoza, _The Probabilistic Relevance Framework: BM25 and Beyond_, 2009 | BM25 ranking formula (k1=1.5, b=0.75) used in hybrid retrieval |
+| Weller et al., _On the Theoretical Limitations of Embedding-Based Retrieval_, arXiv:2508.21038, 2025 | Motivation for BM25 hybrid: single-vector models cannot scale to combinatorial query complexity |
+| Sun et al., _E5: Text Embeddings by Weakly Supervised Contrastive Pre-training_, arXiv:2212.03533, 2022 | Embedding model family reference for multilingual retrieval quality benchmarks |
+| Sun et al., _Jieba Chinese Text Segmentation_ · [github.com/fxsjy/jieba](https://github.com/fxsjy/jieba) | Chinese word segmentation for BM25 (via `@node-rs/jieba`, Rust port) |
+| Cormack et al., _Reciprocal Rank Fusion outperforms Condorcet and individual Rank Learning Methods_, SIGIR 2009 | RRF fusion formula used to merge BM25 and dense vector ranked lists |
+
+---
+
+## Citation
 
 If you use this memory system in your research, please cite the original A-MEM paper:
 
