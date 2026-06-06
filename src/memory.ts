@@ -373,11 +373,18 @@ export async function searchMemory(
     bm25Ranked.map((r) => r[0])
   )
 
-  // Apply heat boost: retrieval_count makes frequently-retrieved notes rank higher
+  // Story 23: heat boost with time decay
+  // Older frequently-retrieved notes should not permanently outrank fresher ones.
+  // Score = RRF × (1 + 0.05 × ln(1 + retrieval_count) / (age_days + 1))
+  // age_days is measured from last_accessed so re-retrieval resets the clock.
+  const now = Date.now()
   const noteMap = new Map(allNotes.map((n) => [n.id, n]))
   const boostedMerged: [string, number][] = merged.map(([id, rrfScore]) => {
     const note = noteMap.get(id)
-    const recencyBoost = note ? 1 + 0.05 * Math.log(1 + (note.retrieval_count || 0)) : 1
+    if (!note) return [id, rrfScore]
+    const lastAccessed = new Date(note.last_accessed || note.timestamp).getTime()
+    const ageDays = (now - lastAccessed) / 86_400_000
+    const recencyBoost = 1 + (0.05 * Math.log(1 + (note.retrieval_count || 0))) / (ageDays + 1)
     return [id, rrfScore * recencyBoost]
   })
   boostedMerged.sort((a, b) => b[1] - a[1])
