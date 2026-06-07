@@ -11,7 +11,7 @@ const client = new Anthropic({
   baseURL: 'http://127.0.0.1:8080',
 })
 
-const MODEL = 'claude-sonnet-4-6' // faster than opus for amem ops
+const MODEL = process.env.AMEM_LLM_MODEL ?? 'claude-sonnet-4-6' // override via env for smoketest/benchmark
 
 // ── Base LLM call ─────────────────────────────────────────────────────────────
 export async function llmCall(prompt: string, maxTokens = 500): Promise<string | null> {
