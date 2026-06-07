@@ -44,8 +44,12 @@ function stripFences(raw: string): string {
     raw = lines.join('\n').trim()
   }
   // Handle models that wrap JSON in outer quotes: "{ ... }" or "[...]"
-  if ((raw.startsWith('"') && raw.endsWith('"')) || (raw.startsWith('\'') && raw.endsWith('\''))) {
-    try { raw = JSON.parse(raw) } catch { /* keep as-is */ }
+  if ((raw.startsWith('"') && raw.endsWith('"')) || (raw.startsWith("'") && raw.endsWith("'"))) {
+    try {
+      raw = JSON.parse(raw)
+    } catch {
+      /* keep as-is */
+    }
   }
   return raw
 }
