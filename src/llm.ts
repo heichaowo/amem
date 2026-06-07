@@ -16,9 +16,12 @@ const MODEL = process.env.AMEM_LLM_MODEL ?? 'claude-sonnet-4-6' // override via 
 // ── Base LLM call ─────────────────────────────────────────────────────────────
 export async function llmCall(prompt: string, maxTokens = 500): Promise<string | null> {
   try {
+    // Gemini thinking models consume extra tokens for reasoning; scale up automatically
+    const isThinking = MODEL.includes('gemini') || MODEL.includes('pro-agent')
+    const effectiveMaxTokens = isThinking ? Math.max(maxTokens * 8, 4000) : maxTokens
     const resp = await client.messages.create({
       model: MODEL,
-      max_tokens: maxTokens,
+      max_tokens: effectiveMaxTokens,
       messages: [{ role: 'user', content: prompt }],
     })
     for (const block of resp.content) {
@@ -39,6 +42,10 @@ function stripFences(raw: string): string {
     lines.shift()
     if (lines[lines.length - 1] === '```') lines.pop()
     raw = lines.join('\n').trim()
+  }
+  // Handle models that wrap JSON in outer quotes: "{ ... }" or "[...]"
+  if ((raw.startsWith('"') && raw.endsWith('"')) || (raw.startsWith('\'') && raw.endsWith('\''))) {
+    try { raw = JSON.parse(raw) } catch { /* keep as-is */ }
   }
   return raw
 }
@@ -70,11 +77,11 @@ const VALID_CATEGORIES = new Set<string>([
 ])
 
 export async function llmConstructNote(content: string): Promise<NoteStructure> {
-  const prompt = `Analyze the following text and respond with JSON only (no markdown, no explanation):
+  const prompt = `Analyze the following text and respond with valid JSON only (no markdown fences, no explanation, no comments). All string values must use standard double quotes and be properly escaped:
 {
-  "keywords": ["keyword1", "keyword2", ...],  // 3-7 key terms
-  "tags": ["tag1", "tag2", ...],              // 2-4 category tags
-  "context": "one sentence summary",
+  "keywords": ["keyword1", "keyword2"],
+  "tags": ["tag1", "tag2"],
+  "context": "one sentence summary in the same language as the input",
   "category": "Technical|Business|Personal|Project|Research|System|General"
 }
 
