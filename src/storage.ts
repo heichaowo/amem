@@ -38,6 +38,8 @@ export interface MemoryNote {
   // ── Story 13-E: coarse category ──────────────────────────────────────────
   category: string // e.g. "Technical" | "Business" | … | "General"
   is_active: boolean
+  // ── Story 26A: knowledge type classification ──────────────────────────────
+  note_type: 'memory' | 'knowledge' // memory: episodic; knowledge: durable reference
 }
 
 export interface QueryResult {
@@ -159,6 +161,8 @@ function pointToNote(point: { id: string; payload: Record<string, unknown>; vect
     // 13-E
     category: (p.category as string) || 'General',
     is_active: p.is_active !== false,
+    // 26A
+    note_type: ((p.note_type as string) === 'knowledge' ? 'knowledge' : 'memory') as 'memory' | 'knowledge',
   }
 }
 

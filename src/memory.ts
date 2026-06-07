@@ -134,11 +134,12 @@ export async function addMemory(content: string, agentId = 'main'): Promise<stri
   console.log('[add] Constructing note...')
 
   // Step 1: Note Construction
-  const { keywords, tags, context, category } = await llmConstructNote(content)
+  const { keywords, tags, context, category, note_type } = await llmConstructNote(content)
   console.log(`  keywords: ${keywords.join(', ')}`)
   console.log(`  tags: ${tags.join(', ')}`)
   console.log(`  context: ${context}`)
   console.log(`  category: ${category}`)
+  console.log(`  note_type: ${note_type}`)
 
   const fieldsText = buildEmbedText({ content, keywords, tags, context })
   const embedding = await encode(fieldsText)
@@ -170,6 +171,8 @@ export async function addMemory(content: string, agentId = 'main'): Promise<stri
     // 13-E
     category,
     is_active: true,
+    // 26A
+    note_type,
   }
 
   // Save first
@@ -382,6 +385,8 @@ export async function searchMemory(
   const boostedMerged: [string, number][] = merged.map(([id, rrfScore]) => {
     const note = noteMap.get(id)
     if (!note) return [id, rrfScore]
+    // Story 26A: knowledge notes are timeless — skip time decay boost
+    if (note.note_type === 'knowledge') return [id, rrfScore]
     const lastAccessed = new Date(note.last_accessed || note.timestamp).getTime()
     const ageDays = (now - lastAccessed) / 86_400_000
     const recencyBoost = 1 + (0.05 * Math.log(1 + (note.retrieval_count || 0))) / (ageDays + 1)
@@ -546,8 +551,10 @@ export async function consolidateMemories(agentId: string, logger?: any): Promis
   log.info(`[Consolidation] Loaded ${allNotes.length} active notes.`)
 
   // 2. 分类分组：根据 category 字段将记忆分组
+  // Story 26A: skip knowledge notes — they are durable and should not be merged
   const groups = new Map<string, MemoryNote[]>()
   for (const note of allNotes) {
+    if (note.note_type === 'knowledge') continue
     const category = note.category || 'General'
     if (!groups.has(category)) {
       groups.set(category, [])

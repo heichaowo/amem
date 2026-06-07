@@ -68,6 +68,8 @@ export interface NoteStructure {
   context: string
   /** Story 13-E: coarse-grained category */
   category: NoteCategory
+  /** Story 26A: episodic memory vs durable knowledge */
+  note_type: 'memory' | 'knowledge'
 }
 
 const VALID_CATEGORIES = new Set<string>([
@@ -86,7 +88,8 @@ export async function llmConstructNote(content: string): Promise<NoteStructure> 
   "keywords": ["keyword1", "keyword2"],
   "tags": ["tag1", "tag2"],
   "context": "one sentence summary in the same language as the input",
-  "category": "Technical|Business|Personal|Project|Research|System|General"
+  "category": "Technical|Business|Personal|Project|Research|System|General",
+  "note_type": "memory|knowledge"
 }
 
 Category guide:
@@ -98,24 +101,30 @@ Category guide:
 - System: system services, monitoring, operations
 - General: anything that does not fit the above
 
+note_type guide:
+- knowledge: books, methodologies, tools, domain knowledge, reference material — durable, no strong time component
+- memory: events, decisions, preferences, states, observations — episodic, time-sensitive
+
 Text: ${content}`
 
-  const raw = await llmCall(prompt, 350)
-  if (!raw) return { keywords: [], tags: [], context: '', category: 'General' }
+  const raw = await llmCall(prompt, 400)
+  if (!raw) return { keywords: [], tags: [], context: '', category: 'General', note_type: 'memory' }
 
   try {
     const data = JSON.parse(stripFences(raw))
     const rawCategory = typeof data.category === 'string' ? data.category : 'General'
     const category: NoteCategory = VALID_CATEGORIES.has(rawCategory) ? (rawCategory as NoteCategory) : 'General'
+    const note_type: 'memory' | 'knowledge' = data.note_type === 'knowledge' ? 'knowledge' : 'memory'
     return {
       keywords: Array.isArray(data.keywords) ? data.keywords : [],
       tags: Array.isArray(data.tags) ? data.tags : [],
       context: typeof data.context === 'string' ? data.context : '',
       category,
+      note_type,
     }
   } catch (e) {
     console.error(`[amem] Note construction parse failed: ${(e as Error).message}`)
-    return { keywords: [], tags: [], context: '', category: 'General' }
+    return { keywords: [], tags: [], context: '', category: 'General', note_type: 'memory' }
   }
 }
 
