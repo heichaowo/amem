@@ -90,35 +90,6 @@ OpenClaw Agent
 
 ---
 
-## Smoke Test Results
-
-Internal regression test suite (`amem-smoketest`) — 25 QA pairs across 5 categories, evaluated 2026-06-05:
-
-| Metric | Value |
-| :--- | :--- |
-| **Average Score** | **4.56 / 5.0** |
-| **Hit@1** | **64.0%** |
-| **Hit@3** | **76.0%** |
-| **MRR** | **0.693** |
-
-| Category | Avg Score | Notes |
-| :--- | :--- | :--- |
-| fact | 5.00 / 5.0 | — |
-| temporal | 5.00 / 5.0 | — |
-| bfs | 5.00 / 5.0 | — |
-| multihop | 4.20 / 5.0 | — |
-| semantic | 3.60 / 5.0 | Active improvement area (Story 21 Chinese BM25) |
-
-**BFS ablation** (10 questions, bfs + multihop categories):
-
-| | BFS OFF | BFS ON | Delta |
-|:---|:---:|:---:|:---:|
-| Average Score | 3.00 | 5.00 | **+2.00** |
-| bfs category | 2.00 | 5.00 | **+3.00** |
-| multihop category | 4.00 | 5.00 | **+1.00** |
-
----
-
 ## Requirements
 
 *   OpenClaw v2026.4+
