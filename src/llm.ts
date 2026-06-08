@@ -70,6 +70,8 @@ export interface NoteStructure {
   category: NoteCategory
   /** Story 26A: episodic memory vs durable knowledge */
   note_type: 'memory' | 'knowledge'
+  /** Story 26B: topic tags, non-empty only for knowledge notes */
+  topics: string[]
 }
 
 const VALID_CATEGORIES = new Set<string>([
@@ -89,7 +91,8 @@ export async function llmConstructNote(content: string): Promise<NoteStructure> 
   "tags": ["tag1", "tag2"],
   "context": "one sentence summary in the same language as the input",
   "category": "Technical|Business|Personal|Project|Research|System|General",
-  "note_type": "memory|knowledge"
+  "note_type": "memory|knowledge",
+  "topics": ["Topic1", "Topic2"]
 }
 
 Category guide:
@@ -105,26 +108,34 @@ note_type guide:
 - knowledge: books, methodologies, tools, domain knowledge, reference material — durable, no strong time component
 - memory: events, decisions, preferences, states, observations — episodic, time-sensitive
 
+topics guide (Story 26B):
+- Only populate for knowledge notes (note_type=knowledge). For memory notes, return [].
+- List 1-5 concise subject tags representing the main topics of this knowledge, e.g. ["TypeScript", "Qdrant", "Vector DB"].
+
 Text: ${content}`
 
   const raw = await llmCall(prompt, 400)
-  if (!raw) return { keywords: [], tags: [], context: '', category: 'General', note_type: 'memory' }
+  if (!raw) return { keywords: [], tags: [], context: '', category: 'General', note_type: 'memory', topics: [] }
 
   try {
     const data = JSON.parse(stripFences(raw))
     const rawCategory = typeof data.category === 'string' ? data.category : 'General'
     const category: NoteCategory = VALID_CATEGORIES.has(rawCategory) ? (rawCategory as NoteCategory) : 'General'
     const note_type: 'memory' | 'knowledge' = data.note_type === 'knowledge' ? 'knowledge' : 'memory'
+    const topics: string[] = note_type === 'knowledge' && Array.isArray(data.topics)
+      ? (data.topics as unknown[]).filter((t): t is string => typeof t === 'string')
+      : []
     return {
       keywords: Array.isArray(data.keywords) ? data.keywords : [],
       tags: Array.isArray(data.tags) ? data.tags : [],
       context: typeof data.context === 'string' ? data.context : '',
       category,
       note_type,
+      topics,
     }
   } catch (e) {
     console.error(`[amem] Note construction parse failed: ${(e as Error).message}`)
-    return { keywords: [], tags: [], context: '', category: 'General', note_type: 'memory' }
+    return { keywords: [], tags: [], context: '', category: 'General', note_type: 'memory', topics: [] }
   }
 }
 

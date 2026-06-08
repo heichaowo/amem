@@ -36,6 +36,8 @@ Final Score = RRF Score × (1 + 0.05 × ln(1 + retrieval_count) / (age_days + 1)
 
 *   🔍 **2-hop Graph Traversal with Relevance Gate** — After vector retrieval, BFS walks the link graph up to 2 hops from each anchor result. Only nodes passing an embedding relevance gate (cosine similarity ≥ 0.25 against the query) are admitted, preventing noise from distant graph neighborhoods.
 *   🀄 **Chinese-Optimized BM25** — The BM25 pipeline uses [Jieba](https://github.com/fxsjy/jieba) (via `@node-rs/jieba`) for CJK word segmentation instead of character-level splitting, dramatically improving recall for Chinese queries. English and mixed-language text fall back to whitespace tokenization automatically.
+*   🧠 **Knowledge Type Classification** — Notes are automatically classified as `memory` (episodic, time-sensitive) or `knowledge` (durable reference, timeless) by LLM. Knowledge notes are excluded from Daily Consolidation merging and time-decay heat penalties, ensuring durable facts remain reliably retrievable regardless of age.
+*   🏷️ **Topic Tags for Knowledge Notes** — `knowledge`-type notes carry a `topics: string[]` field (1-5 concise subject labels, e.g. `["TypeScript", "Qdrant"]`). The `memory_search` tool accepts a `topicsFilter` parameter (AND semantics, case-insensitive) for precise knowledge retrieval by subject.
 *   🛡️ **Strict Quality Controls** — Full Vitest test coverage for embeddings, storage, link-cascading consolidation, tokenization, and BFS gate behavior, integrated into ESLint + Prettier + import boundary CI checks running on GitHub Actions.
 
 ---
@@ -51,6 +53,8 @@ Final Score = RRF Score × (1 + 0.05 × ln(1 + retrieval_count) / (age_days + 1)
 | **Memory Bloat** | Fragmented memories stack up infinitely | **Daily Consolidation** merges semantic duplicates |
 | **Stale Memory Suppression** | High-retrieval old memories permanently outrank fresh ones | **Time-decayed heat boost** — age dampens retrieval_count influence |
 | **Graph Noise** | N/A | **BFS Relevance Gate** filters low-similarity linked nodes |
+| **Knowledge vs. Episodic** | All memories treated equally | **`note_type` field** separates durable knowledge from episodic events; knowledge notes skip consolidation merge and time-decay |
+| **Topic-Based Recall** | Only similarity-based | **`topics` tags + `topicsFilter`** enables precise subject-level knowledge retrieval |
 
 ---
 
@@ -58,7 +62,7 @@ Final Score = RRF Score × (1 + 0.05 × ln(1 + retrieval_count) / (age_days + 1)
 
 A-MEM is an advanced memory architecture for LLM agents inspired by the Zettelkasten method. Unlike traditional flat vector databases, A-MEM maintains memory as a living, self-evolving semantic graph:
 
-1.  **Note Construction** — On write, LLM extracts keywords, tags, a context summary, and categorizes the note (Technical, Business, Personal, Project, Research, System, General).
+1.  **Note Construction** — On write, LLM extracts keywords, tags, a context summary, categorizes the note (Technical, Business, Personal, Project, Research, System, General), classifies it as `memory` (episodic) or `knowledge` (durable), and for knowledge notes extracts 1-5 `topics` subject tags.
 2.  **Link Generation** — Retrieves top-6 candidates; LLM judges whether to link bidirectionally (similarity > 0.3).
 3.  **Memory Evolution & Strengthening** — Up to 3 linked memories have their attributes evolved based on the new context, potentially triggering additional links.
 4.  **Hybrid Retrieval** — Fuses vector search (Transformers.js ONNX local `paraphrase-multilingual-MiniLM-L12-v2`, 384-dim) and BM25 using Reciprocal Rank Fusion (RRF), boosted by retrieval frequency (heat).

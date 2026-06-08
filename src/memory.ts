@@ -134,12 +134,13 @@ export async function addMemory(content: string, agentId = 'main'): Promise<stri
   console.log('[add] Constructing note...')
 
   // Step 1: Note Construction
-  const { keywords, tags, context, category, note_type } = await llmConstructNote(content)
+  const { keywords, tags, context, category, note_type, topics } = await llmConstructNote(content)
   console.log(`  keywords: ${keywords.join(', ')}`)
   console.log(`  tags: ${tags.join(', ')}`)
   console.log(`  context: ${context}`)
   console.log(`  category: ${category}`)
   console.log(`  note_type: ${note_type}`)
+  console.log(`  topics: ${topics.join(', ')}`)
 
   const fieldsText = buildEmbedText({ content, keywords, tags, context })
   const embedding = await encode(fieldsText)
@@ -173,6 +174,8 @@ export async function addMemory(content: string, agentId = 'main'): Promise<stri
     is_active: true,
     // 26A
     note_type,
+    // 26B
+    topics,
   }
 
   // Save first
@@ -341,6 +344,9 @@ export interface SearchResult {
   timestamp: string
   similarity: number
   rrf: number
+  // Story 26B
+  topics: string[]
+  note_type: 'memory' | 'knowledge'
 }
 
 export async function searchMemory(
@@ -352,6 +358,8 @@ export async function searchMemory(
     // Story 22: BFS relevance gate — linked notes with cos-sim below this threshold
     // are skipped to reduce noise. Set to 0 to disable (admit all linked notes).
     bfsSimThreshold?: number
+    // Story 26B: if set, only return knowledge notes that contain ALL of these topics
+    topicsFilter?: string[]
   }
 ): Promise<SearchResult[]> {
   const useBfs = opts?.useBfs !== false // default true
@@ -427,12 +435,23 @@ export async function searchMemory(
     }
   }
 
+  // Story 26B: apply topicsFilter — keep only knowledge notes that contain ALL requested topics
+  const topicsFilter = opts?.topicsFilter
+  const filteredTopIds = topicsFilter && topicsFilter.length > 0
+    ? topIds.filter((id) => {
+        const note = noteMap.get(id)
+        if (!note) return false
+        if (note.note_type !== 'knowledge') return true // pass-through non-knowledge notes
+        return topicsFilter.every((t) => note.topics.map((s) => s.toLowerCase()).includes(t.toLowerCase()))
+      })
+    : topIds
+
   // Build result map
   const embSimMap = new Map(embResults.map((r) => [r.note.id, r.score]))
   const rrfMap = new Map(boostedMerged.map(([id, score]) => [id, score]))
 
   const results: SearchResult[] = []
-  for (const id of [...topIds, ...bfsExtra]) {
+  for (const id of [...filteredTopIds, ...bfsExtra]) {
     const note = noteMap.get(id)
     if (!note) continue
     results.push({
@@ -445,6 +464,8 @@ export async function searchMemory(
       timestamp: note.timestamp,
       similarity: embSimMap.get(id) ?? 0,
       rrf: rrfMap.get(id) ?? 0,
+      topics: note.topics ?? [],
+      note_type: note.note_type ?? 'memory',
     })
   }
 

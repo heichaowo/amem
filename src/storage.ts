@@ -40,6 +40,8 @@ export interface MemoryNote {
   is_active: boolean
   // ── Story 26A: knowledge type classification ──────────────────────────────
   note_type: 'memory' | 'knowledge' // memory: episodic; knowledge: durable reference
+  // ── Story 26B: topic tags for knowledge notes ─────────────────────────────────────────
+  topics: string[] // subject tags, e.g. ["TypeScript", "Qdrant"]; empty for memory notes
 }
 
 export interface QueryResult {
@@ -94,6 +96,11 @@ export async function ensureCollection(): Promise<void> {
       field_name: 'hash',
       field_schema: 'keyword',
     })
+    // Story 26B: Index topics for knowledge note filtering
+    await qdrant('PUT', `/collections/${getCollection()}/index`, {
+      field_name: 'topics',
+      field_schema: 'keyword',
+    })
     _collectionReady = true
   }
 }
@@ -120,6 +127,8 @@ function noteToPoint(note: MemoryNote) {
       // 13-E
       category: note.category || 'General',
       is_active: note.is_active !== false,
+      // 26B
+      topics: note.topics ?? [],
     },
   }
 }
@@ -163,6 +172,8 @@ function pointToNote(point: { id: string; payload: Record<string, unknown>; vect
     is_active: p.is_active !== false,
     // 26A
     note_type: ((p.note_type as string) === 'knowledge' ? 'knowledge' : 'memory') as 'memory' | 'knowledge',
+    // 26B
+    topics: Array.isArray(p.topics) ? (p.topics as string[]) : [],
   }
 }
 

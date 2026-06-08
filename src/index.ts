@@ -125,14 +125,15 @@ function register(api: {
           properties: {
             query: { type: 'string', description: 'Search query' },
             limit: { type: 'number', description: 'Max results (default: 5)' },
+            topicsFilter: { type: 'array', items: { type: 'string' }, description: 'Story 26B: filter knowledge notes by topics (all must match)' },
           },
           required: ['query'],
         },
-        async execute(_toolCallId: string, params: { query: string; limit?: number }) {
-          const { query, limit = 5 } = params
+        async execute(_toolCallId: string, params: { query: string; limit?: number; topicsFilter?: string[] }) {
+          const { query, limit = 5, topicsFilter } = params
           const start = Date.now()
           try {
-            const results = await searchMemory(query, limit, agentId)
+            const results = await searchMemory(query, limit, agentId, { topicsFilter })
             logger.info(`openclaw-amem: memory_search "${query}" → ${results.length} results (${Date.now() - start}ms)`)
             if (!results.length) {
               return { content: [{ type: 'text', text: 'No relevant memories found.' }], details: { count: 0 } }
