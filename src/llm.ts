@@ -11,7 +11,7 @@ const client = new Anthropic({
   baseURL: 'http://127.0.0.1:8080',
 })
 
-const MODEL = process.env.AMEM_LLM_MODEL ?? 'claude-opus-4-6-thinking' // override via env for smoketest/benchmark
+const MODEL = process.env.AMEM_LLM_MODEL ?? 'claude-sonnet-4-6' // override via env for smoketest/benchmark
 
 // ── Base LLM call ─────────────────────────────────────────────────────────────
 export async function llmCall(prompt: string, maxTokens = 500): Promise<string | null> {
@@ -72,7 +72,11 @@ export interface NoteStructure {
   note_type: 'memory' | 'knowledge'
   /** Story 26B: topic tags, non-empty only for knowledge notes */
   topics: string[]
+  /** Story 27: LLM self-reported confidence in note_type classification */
+  confidence: 'high' | 'medium' | 'low'
 }
+
+const VALID_CONFIDENCE = new Set<string>(['high', 'medium', 'low'])
 
 const VALID_CATEGORIES = new Set<string>([
   'Technical',
@@ -92,7 +96,8 @@ export async function llmConstructNote(content: string): Promise<NoteStructure> 
   "context": "one sentence summary in the same language as the input",
   "category": "Technical|Business|Personal|Project|Research|System|General",
   "note_type": "memory|knowledge",
-  "topics": ["Topic1", "Topic2"]
+  "topics": ["Topic1", "Topic2"],
+  "confidence": "high|medium|low"
 }
 
 Category guide:
@@ -112,10 +117,15 @@ topics guide (Story 26B):
 - Only populate for knowledge notes (note_type=knowledge). For memory notes, return [].
 - List 1-5 concise subject tags representing the main topics of this knowledge, e.g. ["TypeScript", "Qdrant", "Vector DB"].
 
+confidence guide (Story 27):
+- high: note_type is unambiguous — clearly episodic (event/decision/state) or clearly durable knowledge (tool doc/methodology)
+- medium: some ambiguity — e.g. "learned X method" could be either memory or knowledge
+- low: LLM is uncertain — vague, fragmentary, or mixed content
+
 Text: ${content}`
 
   const raw = await llmCall(prompt, 400)
-  if (!raw) return { keywords: [], tags: [], context: '', category: 'General', note_type: 'memory', topics: [] }
+  if (!raw) return { keywords: [], tags: [], context: '', category: 'General', note_type: 'memory', topics: [], confidence: 'medium' }
 
   try {
     const data = JSON.parse(stripFences(raw))
@@ -125,6 +135,10 @@ Text: ${content}`
     const topics: string[] = note_type === 'knowledge' && Array.isArray(data.topics)
       ? (data.topics as unknown[]).filter((t): t is string => typeof t === 'string')
       : []
+    const rawConfidence = typeof data.confidence === 'string' ? data.confidence : 'medium'
+    const confidence: 'high' | 'medium' | 'low' = VALID_CONFIDENCE.has(rawConfidence)
+      ? (rawConfidence as 'high' | 'medium' | 'low')
+      : 'medium'
     return {
       keywords: Array.isArray(data.keywords) ? data.keywords : [],
       tags: Array.isArray(data.tags) ? data.tags : [],
@@ -132,10 +146,11 @@ Text: ${content}`
       category,
       note_type,
       topics,
+      confidence,
     }
   } catch (e) {
     console.error(`[amem] Note construction parse failed: ${(e as Error).message}`)
-    return { keywords: [], tags: [], context: '', category: 'General', note_type: 'memory', topics: [] }
+    return { keywords: [], tags: [], context: '', category: 'General', note_type: 'memory', topics: [], confidence: 'medium' }
   }
 }
 
