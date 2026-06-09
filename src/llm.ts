@@ -125,16 +125,26 @@ confidence guide (Story 27):
 Text: ${content}`
 
   const raw = await llmCall(prompt, 400)
-  if (!raw) return { keywords: [], tags: [], context: '', category: 'General', note_type: 'memory', topics: [], confidence: 'medium' }
+  if (!raw)
+    return {
+      keywords: [],
+      tags: [],
+      context: '',
+      category: 'General',
+      note_type: 'memory',
+      topics: [],
+      confidence: 'medium',
+    }
 
   try {
     const data = JSON.parse(stripFences(raw))
     const rawCategory = typeof data.category === 'string' ? data.category : 'General'
     const category: NoteCategory = VALID_CATEGORIES.has(rawCategory) ? (rawCategory as NoteCategory) : 'General'
     const note_type: 'memory' | 'knowledge' = data.note_type === 'knowledge' ? 'knowledge' : 'memory'
-    const topics: string[] = note_type === 'knowledge' && Array.isArray(data.topics)
-      ? (data.topics as unknown[]).filter((t): t is string => typeof t === 'string')
-      : []
+    const topics: string[] =
+      note_type === 'knowledge' && Array.isArray(data.topics)
+        ? (data.topics as unknown[]).filter((t): t is string => typeof t === 'string')
+        : []
     const rawConfidence = typeof data.confidence === 'string' ? data.confidence : 'medium'
     const confidence: 'high' | 'medium' | 'low' = VALID_CONFIDENCE.has(rawConfidence)
       ? (rawConfidence as 'high' | 'medium' | 'low')
@@ -150,7 +160,15 @@ Text: ${content}`
     }
   } catch (e) {
     console.error(`[amem] Note construction parse failed: ${(e as Error).message}`)
-    return { keywords: [], tags: [], context: '', category: 'General', note_type: 'memory', topics: [], confidence: 'medium' }
+    return {
+      keywords: [],
+      tags: [],
+      context: '',
+      category: 'General',
+      note_type: 'memory',
+      topics: [],
+      confidence: 'medium',
+    }
   }
 }
 

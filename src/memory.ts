@@ -437,14 +437,15 @@ export async function searchMemory(
 
   // Story 26B: apply topicsFilter — keep only knowledge notes that contain ALL requested topics
   const topicsFilter = opts?.topicsFilter
-  const filteredTopIds = topicsFilter && topicsFilter.length > 0
-    ? topIds.filter((id) => {
-        const note = noteMap.get(id)
-        if (!note) return false
-        if (note.note_type !== 'knowledge') return true // pass-through non-knowledge notes
-        return topicsFilter.every((t) => note.topics.map((s) => s.toLowerCase()).includes(t.toLowerCase()))
-      })
-    : topIds
+  const filteredTopIds =
+    topicsFilter && topicsFilter.length > 0
+      ? topIds.filter((id) => {
+          const note = noteMap.get(id)
+          if (!note) return false
+          if (note.note_type !== 'knowledge') return true // pass-through non-knowledge notes
+          return topicsFilter.every((t) => note.topics.map((s) => s.toLowerCase()).includes(t.toLowerCase()))
+        })
+      : topIds
 
   // Build result map
   const embSimMap = new Map(embResults.map((r) => [r.note.id, r.score]))

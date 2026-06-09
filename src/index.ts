@@ -125,7 +125,11 @@ function register(api: {
           properties: {
             query: { type: 'string', description: 'Search query' },
             limit: { type: 'number', description: 'Max results (default: 5)' },
-            topicsFilter: { type: 'array', items: { type: 'string' }, description: 'Story 26B: filter knowledge notes by topics (all must match)' },
+            topicsFilter: {
+              type: 'array',
+              items: { type: 'string' },
+              description: 'Story 26B: filter knowledge notes by topics (all must match)',
+            },
           },
           required: ['query'],
         },
