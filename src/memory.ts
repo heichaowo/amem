@@ -22,9 +22,10 @@ import {
   getNotesByDatePrefix,
   replaceLinkReferences,
   invalidateNote,
+  patchNotePayload,
   type MemoryNote,
 } from './storage.js'
-import { llmConstructNote, llmShouldLink, llmEvolveNote, llmShouldMerge } from './llm.js'
+import { llmConstructNote, llmShouldLink, llmEvolveNote, llmShouldMerge, llmEvolutionJudge } from './llm.js'
 import { shouldRunEvolution } from './evo-counter.js'
 import { Jieba } from '@node-rs/jieba'
 
@@ -184,6 +185,8 @@ export async function addMemory(content: string, agentId = 'main'): Promise<stri
     topics,
     // 29
     pending_merge: pendingMerge,
+    // 30
+    conflict: false,
   }
 
   // Save first
@@ -498,16 +501,104 @@ function sleep(ms: number): Promise<void> {
  * Merge semantically similar notes written today.
  * Called asynchronously from agent_end hook; failures are silent.
  * Returns the number of notes merged (deleted).
+ *
+ * Story 30: pending_merge=true notes are routed through LLM evolution judgment
+ * (EVOLVE/CONFLICT/EXPAND/NEW) instead of simple merge.
  */
 export async function mergeSimilarNotes(agentId: string): Promise<number> {
   const today = new Date().toISOString().slice(0, 10) // "YYYY-MM-DD"
   const notes = await getNotesByDatePrefix(today, agentId)
 
+  // ── Story 30: Evolution processing for pending_merge notes ────────────────
+  const pendingNotes = notes.filter((n) => n.pending_merge === true)
+  let evolvedCount = 0
+
+  for (const pendingNote of pendingNotes) {
+    // Find the closest non-pending neighbor
+    let bestSim = -1
+    let bestNeighbor: MemoryNote | null = null
+    for (const other of notes) {
+      if (other.id === pendingNote.id) continue
+      if (other.pending_merge) continue
+      if (!other.embedding.length || !pendingNote.embedding.length) continue
+      const sim = cosineSimilarity(pendingNote.embedding, other.embedding)
+      if (sim > bestSim) {
+        bestSim = sim
+        bestNeighbor = other
+      }
+    }
+
+    if (!bestNeighbor) {
+      await patchNotePayload(pendingNote.id, { pending_merge: false })
+      continue
+    }
+
+    const judgment = await llmEvolutionJudge(bestNeighbor.content, pendingNote.content)
+    console.log(
+      `[merge] evolution judgment: ${pendingNote.id.slice(0, 8)} → ${bestNeighbor.id.slice(0, 8)}: ${judgment.type}`
+    )
+
+    if (judgment.type === 'EVOLVE') {
+      const oldHistory = bestNeighbor.evolution_history || []
+      oldHistory.push({
+        triggeredBy: pendingNote.id,
+        triggeredAt: new Date().toISOString(),
+        oldContext: bestNeighbor.context,
+        newContext: bestNeighbor.context,
+        oldTags: [...bestNeighbor.tags],
+        newTags: [...bestNeighbor.tags],
+        action: 'consolidate',
+      })
+      const mergedContent = judgment.mergedContent || pendingNote.content
+      const newEmbedding = await encode(buildEmbedText({ ...bestNeighbor, content: mergedContent }))
+      const newHash = createHash('md5').update(mergedContent).digest('hex')
+      await updateNoteContent(bestNeighbor.id, mergedContent, newEmbedding, newHash)
+      await patchNotePayload(bestNeighbor.id, {
+        evolution_history: JSON.stringify(oldHistory),
+        evolution_type: 'EVOLVE',
+      })
+      await deleteNote(pendingNote.id)
+      evolvedCount++
+    } else if (judgment.type === 'CONFLICT') {
+      await patchNotePayload(pendingNote.id, { pending_merge: false, conflict: true, evolution_type: 'CONFLICT' })
+      await patchNotePayload(bestNeighbor.id, { conflict: true, evolution_type: 'CONFLICT' })
+    } else if (judgment.type === 'EXPAND') {
+      const oldHistory = bestNeighbor.evolution_history || []
+      oldHistory.push({
+        triggeredBy: pendingNote.id,
+        triggeredAt: new Date().toISOString(),
+        oldContext: bestNeighbor.context,
+        newContext: bestNeighbor.context,
+        oldTags: [...bestNeighbor.tags],
+        newTags: [...bestNeighbor.tags],
+        action: 'consolidate',
+      })
+      const mergedContent = judgment.mergedContent || `${bestNeighbor.content}；${pendingNote.content}`
+      const newEmbedding = await encode(buildEmbedText({ ...bestNeighbor, content: mergedContent }))
+      const newHash = createHash('md5').update(mergedContent).digest('hex')
+      await updateNoteContent(bestNeighbor.id, mergedContent, newEmbedding, newHash)
+      await patchNotePayload(bestNeighbor.id, {
+        evolution_history: JSON.stringify(oldHistory),
+        evolution_type: 'EXPAND',
+      })
+      await deleteNote(pendingNote.id)
+      evolvedCount++
+    } else {
+      // NEW — just clear pending_merge
+      await patchNotePayload(pendingNote.id, { pending_merge: false, evolution_type: 'NEW' })
+    }
+
+    await sleep(200)
+  }
+
+  // ── Original merge logic for non-pending notes ────────────────────────────
   // Not enough notes to bother
-  if (notes.length < 5) return 0
+  if (notes.length < 5) return evolvedCount
 
   // Build list of (i, j) candidate pairs with sim >= 0.80
-  // Cap at top-10 pairs to limit LLM calls
+  // Exclude pending_merge notes (already handled above)
+  const pendingIds = new Set(pendingNotes.map((n) => n.id))
+
   interface SimPair {
     i: number
     j: number
@@ -516,7 +607,9 @@ export async function mergeSimilarNotes(agentId: string): Promise<number> {
 
   const pairs: SimPair[] = []
   for (let i = 0; i < notes.length; i++) {
+    if (pendingIds.has(notes[i].id)) continue
     for (let j = i + 1; j < notes.length; j++) {
+      if (pendingIds.has(notes[j].id)) continue
       if (!notes[i].embedding.length || !notes[j].embedding.length) continue
       const sim = cosineSimilarity(notes[i].embedding, notes[j].embedding)
       if (sim >= 0.8) {
@@ -525,7 +618,7 @@ export async function mergeSimilarNotes(agentId: string): Promise<number> {
     }
   }
 
-  if (pairs.length === 0) return 0
+  if (pairs.length === 0) return evolvedCount
 
   // Sort by similarity descending, take top 10
   pairs.sort((a, b) => b.sim - a.sim)
@@ -560,7 +653,7 @@ export async function mergeSimilarNotes(agentId: string): Promise<number> {
     await sleep(200)
   }
 
-  return mergedCount
+  return evolvedCount + mergedCount
 }
 
 /**

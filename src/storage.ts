@@ -44,6 +44,9 @@ export interface MemoryNote {
   topics: string[] // subject tags, e.g. ["TypeScript", "Qdrant"]; empty for memory notes
   // ── Story 29: dedup pending merge flag ──────────────────────────────────────
   pending_merge: boolean // true when similarity 0.72-0.85 — candidate for future merge
+  // ── Story 30: evolution mechanism ──────────────────────────────────────────
+  evolution_type?: 'EVOLVE' | 'CONFLICT' | 'EXPAND' | 'NEW'
+  conflict: boolean
 }
 
 export interface QueryResult {
@@ -135,6 +138,9 @@ function noteToPoint(note: MemoryNote) {
       note_type: note.note_type || 'memory',
       // 29
       pending_merge: note.pending_merge ?? false,
+      // 30
+      evolution_type: note.evolution_type || '',
+      conflict: note.conflict ?? false,
     },
   }
 }
@@ -182,6 +188,12 @@ function pointToNote(point: { id: string; payload: Record<string, unknown>; vect
     topics: Array.isArray(p.topics) ? (p.topics as string[]) : [],
     // 29
     pending_merge: p.pending_merge === true,
+    // 30
+    evolution_type:
+      typeof p.evolution_type === 'string' && ['EVOLVE', 'CONFLICT', 'EXPAND', 'NEW'].includes(p.evolution_type)
+        ? (p.evolution_type as 'EVOLVE' | 'CONFLICT' | 'EXPAND' | 'NEW')
+        : undefined,
+    conflict: p.conflict === true,
   }
 }
 
@@ -411,6 +423,14 @@ export async function updateNoteLinks(id: string, links: string[]): Promise<void
   await ensureCollection()
   await qdrant('POST', `/collections/${getCollection()}/points/payload?wait=true`, {
     payload: { links },
+    points: [id],
+  })
+}
+
+export async function patchNotePayload(id: string, fields: Record<string, unknown>): Promise<void> {
+  await ensureCollection()
+  await qdrant('POST', `/collections/${getCollection()}/points/payload?wait=true`, {
+    payload: fields,
     points: [id],
   })
 }

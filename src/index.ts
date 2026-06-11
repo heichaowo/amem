@@ -271,7 +271,9 @@ function register(api: {
         messages?: Array<{ role: string; content: string | Array<{ type: string; text?: string }> }>
         success?: boolean
       }) => {
-        logger.info(`openclaw-amem: agent_end hook triggered (success=${event.success}, messages=${event.messages?.length ?? 0})`)
+        logger.info(
+          `openclaw-amem: agent_end hook triggered (success=${event.success}, messages=${event.messages?.length ?? 0})`
+        )
         try {
           if (!event.success) {
             logger.info('openclaw-amem: agent_end skipped — event.success is false')
@@ -365,7 +367,9 @@ function register(api: {
               logger.info(`openclaw-amem: mergeSimilarNotes completed, 0 pairs merged (${today})`)
             }
           } catch (mergeErr) {
-            logger.error(`openclaw-amem: mergeSimilarNotes FAILED — ${(mergeErr as Error).message}\n${(mergeErr as Error).stack}`)
+            logger.error(
+              `openclaw-amem: mergeSimilarNotes FAILED — ${(mergeErr as Error).message}\n${(mergeErr as Error).stack}`
+            )
           }
         } catch (e) {
           logger.warn(`openclaw-amem: agent_end CRUD hook failed — ${(e as Error).message}`)
@@ -426,4 +430,12 @@ const plugin = definePluginEntry({
 export default plugin
 export { register }
 export { addMemory, searchMemory, listMemories, mergeSimilarNotes, consolidateMemories } from './memory.js'
-export { ensureCollection, getNote, updateNote, deleteNote, invalidateNote, listNotes } from './storage.js'
+export {
+  ensureCollection,
+  getNote,
+  updateNote,
+  deleteNote,
+  invalidateNote,
+  listNotes,
+  patchNotePayload,
+} from './storage.js'
