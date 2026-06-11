@@ -147,10 +147,16 @@ export async function addMemory(content: string, agentId = 'main'): Promise<stri
 
   // ── Layer 2: High-similarity vector dedup (UPDATE instead of INSERT) ─────────
   const topMatch = await queryByEmbedding(embedding, 1, agentId, 0.0)
-  if (topMatch.length > 0 && topMatch[0].score >= 0.88) {
+  if (topMatch.length > 0 && topMatch[0].score >= 0.85) {
     console.log(`[add] dedup: high-sim match (sim=${topMatch[0].score.toFixed(3)}), updating existing`)
     await updateNoteContent(topMatch[0].note.id, content, embedding, hash)
     return topMatch[0].note.id
+  }
+
+  // ── Layer 2b: Pending merge flag for borderline similarity (0.72-0.85) ──────
+  const pendingMerge = topMatch.length > 0 && topMatch[0].score >= 0.72 && topMatch[0].score < 0.85
+  if (pendingMerge) {
+    console.log(`[add] dedup: borderline sim (sim=${topMatch[0].score.toFixed(3)}), marking pending_merge=true`)
   }
 
   const note: MemoryNote = {
@@ -176,6 +182,8 @@ export async function addMemory(content: string, agentId = 'main'): Promise<stri
     note_type,
     // 26B
     topics,
+    // 29
+    pending_merge: pendingMerge,
   }
 
   // Save first

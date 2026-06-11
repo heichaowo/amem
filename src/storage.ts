@@ -42,6 +42,8 @@ export interface MemoryNote {
   note_type: 'memory' | 'knowledge' // memory: episodic; knowledge: durable reference
   // ── Story 26B: topic tags for knowledge notes ─────────────────────────────────────────
   topics: string[] // subject tags, e.g. ["TypeScript", "Qdrant"]; empty for memory notes
+  // ── Story 29: dedup pending merge flag ──────────────────────────────────────
+  pending_merge: boolean // true when similarity 0.72-0.85 — candidate for future merge
 }
 
 export interface QueryResult {
@@ -129,6 +131,10 @@ function noteToPoint(note: MemoryNote) {
       is_active: note.is_active !== false,
       // 26B
       topics: note.topics ?? [],
+      // 26A
+      note_type: note.note_type || 'memory',
+      // 29
+      pending_merge: note.pending_merge ?? false,
     },
   }
 }
@@ -174,6 +180,8 @@ function pointToNote(point: { id: string; payload: Record<string, unknown>; vect
     note_type: ((p.note_type as string) === 'knowledge' ? 'knowledge' : 'memory') as 'memory' | 'knowledge',
     // 26B
     topics: Array.isArray(p.topics) ? (p.topics as string[]) : [],
+    // 29
+    pending_merge: p.pending_merge === true,
   }
 }
 

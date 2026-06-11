@@ -26,7 +26,7 @@ function getAgentId(cfg: Record<string, unknown>): string {
 
 // ── OpenClaw plugin registration ──────────────────────────────────────────────
 function register(api: {
-  logger: { info: (msg: string) => void; warn: (msg: string) => void }
+  logger: { info: (msg: string) => void; warn: (msg: string) => void; error: (msg: string) => void }
   pluginConfig?: Record<string, unknown>
   registerMemoryCapability?: (cap: unknown) => void
   registerTool?: (tool: unknown, opts?: unknown) => void
@@ -271,8 +271,12 @@ function register(api: {
         messages?: Array<{ role: string; content: string | Array<{ type: string; text?: string }> }>
         success?: boolean
       }) => {
+        logger.info(`openclaw-amem: agent_end hook triggered (success=${event.success}, messages=${event.messages?.length ?? 0})`)
         try {
-          if (!event.success) return
+          if (!event.success) {
+            logger.info('openclaw-amem: agent_end skipped — event.success is false')
+            return
+          }
           // Extract last user + assistant exchange
           const msgs = event.messages || []
           const lastUser = [...msgs].reverse().find((m) => m.role === 'user')
@@ -350,17 +354,19 @@ function register(api: {
             // NONE: skip
           }
 
-          // 异步触发碎片合并（不阻塞主流程）
+          // 同步触发碎片合并（Story 29: 改为 await 确保执行完毕）
           const today = new Date().toISOString().slice(0, 10)
-          void mergeSimilarNotes(agentId)
-            .then((merged) => {
-              if (merged > 0) {
-                logger.info(`openclaw-amem: merged ${merged} similar notes today (${today})`)
-              }
-            })
-            .catch((e: Error) => {
-              logger.warn(`openclaw-amem: merge failed — ${e.message}`)
-            })
+          logger.info(`openclaw-amem: starting mergeSimilarNotes for agent=${agentId}, date=${today}`)
+          try {
+            const merged = await mergeSimilarNotes(agentId)
+            if (merged > 0) {
+              logger.info(`openclaw-amem: merged ${merged} similar notes today (${today})`)
+            } else {
+              logger.info(`openclaw-amem: mergeSimilarNotes completed, 0 pairs merged (${today})`)
+            }
+          } catch (mergeErr) {
+            logger.error(`openclaw-amem: mergeSimilarNotes FAILED — ${(mergeErr as Error).message}\n${(mergeErr as Error).stack}`)
+          }
         } catch (e) {
           logger.warn(`openclaw-amem: agent_end CRUD hook failed — ${(e as Error).message}`)
         }
