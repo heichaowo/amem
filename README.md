@@ -4,11 +4,11 @@
   <img src="https://raw.githubusercontent.com/heichaowo/openclaw-amem/main/website/public/logo.webp" width="120" alt="A-MEM Logo" />
 </p>
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![npm](https://img.shields.io/npm/v/amem-plugin.svg)](https://www.npmjs.com/package/amem-plugin)
-[![arXiv](https://img.shields.io/badge/arXiv-2502.12110-b31b1b.svg)](https://arxiv.org/abs/2502.12110)
-[![OpenClaw](https://img.shields.io/badge/OpenClaw-plugin-blue)](https://github.com/openclaw/openclaw)
-[![CI Workflow](https://github.com/heichaowo/openclaw-amem/actions/workflows/ci.yml/badge.svg)](https://github.com/heichaowo/openclaw-amem/actions)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow?style=for-the-badge)](LICENSE)
+[![npm](https://img.shields.io/npm/v/amem-plugin?style=for-the-badge&logo=npm&logoColor=white)](https://www.npmjs.com/package/amem-plugin)
+[![arXiv](https://img.shields.io/badge/arXiv-2502.12110-b31b1b?style=for-the-badge)](https://arxiv.org/abs/2502.12110)
+[![OpenClaw](https://img.shields.io/badge/OpenClaw-plugin-blue?style=for-the-badge)](https://github.com/openclaw/openclaw)
+[![CI](https://img.shields.io/github/actions/workflow/status/heichaowo/openclaw-amem/ci.yml?style=for-the-badge&logo=github-actions&logoColor=white&label=CI)](https://github.com/heichaowo/openclaw-amem/actions)
 
 **A-MEM agentic memory backend for [OpenClaw](https://github.com/openclaw/openclaw)**
 
