@@ -299,6 +299,50 @@ export async function llmShouldMerge(
 }
 
 // ── Note evolution ────────────────────────────────────────────────────────────
+
+// ── Story 30: Evolution type judgment ────────────────────────────────────────
+export type EvolutionType = 'EVOLVE' | 'CONFLICT' | 'EXPAND' | 'NEW'
+
+const VALID_EVOLUTION_TYPES = new Set<string>(['EVOLVE', 'CONFLICT', 'EXPAND', 'NEW'])
+
+export async function llmEvolutionJudge(
+  oldContent: string,
+  newContent: string
+): Promise<{ type: EvolutionType; mergedContent?: string }> {
+  const prompt = `你是一个记忆演化判断助手。分析以下两条记忆的关系并返回 JSON。
+
+旧记忆：${oldContent}
+新记忆：${newContent}
+
+判断规则：
+- EVOLVE：新内容是对旧记忆的深化/更新（如「想买 Model 3」→「决定买 Model 3 标准后驱版」）
+  返回：{"type": "EVOLVE", "mergedContent": "融合后的完整内容，保留演化轨迹"}
+- CONFLICT：新旧信息矛盾/冲突（如「在Riverstone工作」vs「已搬到Eastholm」）
+  返回：{"type": "CONFLICT"}
+- EXPAND：新信息是对旧记忆的补充扩展（如「有姐姐」+「姐姐在Northvale工作」）
+  返回：{"type": "EXPAND", "mergedContent": "合并后的完整内容，整合双方信息"}
+- NEW：全新信息，与旧记忆无实质关联
+  返回：{"type": "NEW"}
+
+只返回 JSON，不要任何其他文字。`
+
+  const raw = await llmCall(prompt, 300)
+  if (!raw) return { type: 'NEW' }
+
+  try {
+    const data = JSON.parse(stripFences(raw))
+    const type: EvolutionType = VALID_EVOLUTION_TYPES.has(data.type) ? (data.type as EvolutionType) : 'NEW'
+    return {
+      type,
+      mergedContent: typeof data.mergedContent === 'string' ? data.mergedContent : undefined,
+    }
+  } catch (e) {
+    console.error(`[amem] llmEvolutionJudge parse failed: ${(e as Error).message}`)
+    return { type: 'NEW' }
+  }
+}
+
+// ── Note evolution (legacy) ──────────────────────────────────────────────────
 export interface EvolvedNote {
   tags: string[] | null
   context: string | null

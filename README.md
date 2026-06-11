@@ -90,6 +90,21 @@ OpenClaw Agent
 
 ---
 
+## Evolution Mechanism (Story 30)
+
+When new memories are borderline-similar to existing ones (cosine similarity 0.72–0.85), A-MEM marks them `pending_merge` and routes them through an **LLM-driven evolution judgment** instead of simple deduplication. The LLM classifies the relationship between the old and new memory into one of four paths:
+
+| Type | Meaning | Action |
+|------|---------|--------|
+| **EVOLVE** | New info deepens/updates the old memory (e.g. "wants to buy Model 3" → "decided on standard RWD Model 3") | Old note content updated, `evolution_history` appended, new note absorbed |
+| **CONFLICT** | Old and new info contradict each other (e.g. "lives in Riverstone" vs "moved to Eastholm") | Both notes kept, both marked `conflict: true` |
+| **EXPAND** | New info complements the old memory (e.g. "has a sister" + "sister works in education in Northvale") | Content merged into old note, `evolution_history` appended, new note absorbed |
+| **NEW** | Unrelated information, no real connection | Both notes kept as-is |
+
+This is the key differentiator from mem0-style flat memory systems: memories **evolve** rather than being silently overwritten. The `evolution_history` field provides a full audit trail of how each memory changed over time.
+
+---
+
 ## Requirements
 
 *   OpenClaw v2026.4+
@@ -202,6 +217,7 @@ Test coverage includes:
 | `test/tokenize.test.ts` | Jieba Chinese segmentation, mixed-language, edge cases |
 | `test/bfs-gate.test.ts` | BFS relevance gate: filter / admit / disable |
 | `test/heat-decay.test.ts` | Time-decay heat boost: fresh > stale ranking, decay magnitude |
+| `test/evolution-test.ts` | Evolution mechanism: EVOLVE/CONFLICT/EXPAND/NEW paths (standalone) |
 
 ---
 
