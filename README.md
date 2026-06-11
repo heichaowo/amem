@@ -145,11 +145,14 @@ Flagged notes are patched with `low_quality: true` in Qdrant.
 ### 1. Install the plugin
 
 ```bash
-# From local checkout
-openclaw plugins install --link ./openclaw-amem
+# From npm (recommended)
+openclaw plugins install amem-plugin
 
 # From git
 openclaw plugins install git:github.com/heichaowo/openclaw-amem
+
+# From local checkout
+openclaw plugins install --link ./openclaw-amem
 ```
 
 ### 2. Configure `~/.openclaw/openclaw.json`
