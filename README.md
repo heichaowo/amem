@@ -129,22 +129,6 @@ The `memory_quality_scan` tool scans the entire memory store and identifies:
 
 Flagged notes are patched with `low_quality: true` in Qdrant.
 
-### Review Batch File
-
-`memory_quality_scan` generates a Markdown review file (default: Obsidian vault path) with checkboxes for each flagged note:
-
-```
-### [1] 🔴 LOW | General
-`note-uuid`
-**问题：** 内容过短（<10字）
-**内容：** ...
-- [ ] 保留
-- [ ] 改写
-- [ ] 删除
-```
-
-Files auto-increment (`amem-review-batch1.md`, `amem-review-batch2.md`, …).
-
 ---
 
 ## Requirements
