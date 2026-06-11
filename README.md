@@ -12,7 +12,7 @@
 
 **A-MEM agentic memory backend for [OpenClaw](https://github.com/openclaw/openclaw)**
 
-An OpenClaw plugin that integrates the **A-MEM** (Agentic Memory) system — featuring dynamic memory networks, automatic **link generation**, **memory evolution**, and **in-process consolidation**, backed by Qdrant + local Transformers.js + LLM. **No Python required.**
+The first open-source A-MEM memory plugin for [OpenClaw](https://github.com/openclaw/openclaw) — memories **evolve**, not just accumulate. Dynamic graph linking, hybrid retrieval, and LLM-driven evolution judgment. Backed by Qdrant + local Transformers.js + LLM. **No Python required.**
 
 > **Note:** This project is a production-ready OpenClaw plugin integration of the A-MEM system. For the original research implementation and paper reproduction, see [agiresearch/A-MEM](https://github.com/agiresearch/A-MEM).
 
