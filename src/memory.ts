@@ -122,8 +122,32 @@ function buildEmbedText(note: Pick<MemoryNote, 'content' | 'keywords' | 'tags' |
   return text
 }
 
+// ── Story 31: Quality gate ────────────────────────────────────────────────────
+const EPHEMERAL_SIGNALS = ['待跑', '等确认', '昨日', '明天完成']
+
+export interface QualityCheckResult {
+  ok: boolean
+  ephemeral: boolean
+  reason?: string
+}
+
+export function checkQuality(content: string): QualityCheckResult {
+  const trimmed = content.trim()
+  if (trimmed.length < 10) {
+    return { ok: false, ephemeral: false, reason: `内容过短（${trimmed.length} 字，最少 10 字）` }
+  }
+  const ephemeral = EPHEMERAL_SIGNALS.some((w) => trimmed.includes(w))
+  return { ok: true, ephemeral }
+}
+
 // ── addMemory ─────────────────────────────────────────────────────────────────
 export async function addMemory(content: string, agentId = 'main'): Promise<string> {
+  // ── Story 31: Quality gate ──────────────────────────────────────────────────
+  const quality = checkQuality(content)
+  if (!quality.ok) {
+    throw new Error(`[quality] 写入拒绝: ${quality.reason}`)
+  }
+
   // ── Layer 1: Exact hash dedup (before LLM & embedding, cheapest check) ──────
   const hash = createHash('md5').update(content).digest('hex')
   const existingByHash = await findByHash(hash, agentId)
@@ -187,6 +211,9 @@ export async function addMemory(content: string, agentId = 'main'): Promise<stri
     pending_merge: pendingMerge,
     // 30
     conflict: false,
+    // 31
+    ephemeral: quality.ephemeral,
+    low_quality: false,
   }
 
   // Save first

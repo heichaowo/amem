@@ -39,6 +39,7 @@ Final Score = RRF Score × (1 + 0.05 × ln(1 + retrieval_count) / (age_days + 1)
 *   🧠 **Knowledge Type Classification** — Notes are automatically classified as `memory` (episodic, time-sensitive) or `knowledge` (durable reference, timeless) by LLM. Knowledge notes are excluded from Daily Consolidation merging and time-decay heat penalties, ensuring durable facts remain reliably retrievable regardless of age.
 *   🏷️ **Topic Tags for Knowledge Notes** — `knowledge`-type notes carry a `topics: string[]` field (1-5 concise subject labels, e.g. `["TypeScript", "Qdrant"]`). The `memory_search` tool accepts a `topicsFilter` parameter (AND semantics, case-insensitive) for precise knowledge retrieval by subject.
 *   🛡️ **Strict Quality Controls** — Full Vitest test coverage for embeddings, storage, link-cascading consolidation, tokenization, and BFS gate behavior, integrated into ESLint + Prettier + import boundary CI checks running on GitHub Actions.
+*   📊 **Quality Scoring & Auto-Review** — Write-time quality gate rejects content under 10 characters and marks temporal/ephemeral content (containing signal words like '待跑', '等确认'). The `memory_quality_scan` tool scans the full memory store, identifies low-quality entries (too short, expired ephemeral >7 days, unresolved conflicts), and generates Obsidian-compatible review batch files for human curation.
 
 ---
 
@@ -102,6 +103,47 @@ When new memories are borderline-similar to existing ones (cosine similarity 0.7
 | **NEW** | Unrelated information, no real connection | Both notes kept as-is |
 
 This is the key differentiator from mem0-style flat memory systems: memories **evolve** rather than being silently overwritten. The `evolution_history` field provides a full audit trail of how each memory changed over time.
+
+---
+
+## Quality Scoring & Auto-Review (Story 31)
+
+A-MEM enforces quality at both **write time** and **periodic scan**:
+
+### Write-Time Quality Gate
+
+Every `memory_add` call passes through `checkQuality()` before any LLM or embedding work:
+
+- **Content < 10 characters** → write rejected, error returned
+- **Contains temporal signal words** (`待跑`, `等确认`, `昨日`, `明天完成`) → written with `ephemeral: true` flag
+
+### Periodic Quality Scan
+
+The `memory_quality_scan` tool scans the entire memory store and identifies:
+
+| Reason | Condition |
+|--------|-----------|
+| `too_short` | Content < 10 characters (legacy notes that predate the gate) |
+| `expired_ephemeral` | `ephemeral=true` and written > 7 days ago |
+| `pending_conflict` | `conflict=true` (contradictory evolution detected) |
+
+Flagged notes are patched with `low_quality: true` in Qdrant.
+
+### Review Batch File
+
+`memory_quality_scan` generates a Markdown review file (default: Obsidian vault path) with checkboxes for each flagged note:
+
+```
+### [1] 🔴 LOW | General
+`note-uuid`
+**问题：** 内容过短（<10字）
+**内容：** ...
+- [ ] 保留
+- [ ] 改写
+- [ ] 删除
+```
+
+Files auto-increment (`amem-review-batch1.md`, `amem-review-batch2.md`, …).
 
 ---
 
@@ -191,6 +233,14 @@ Returns the total active note count for the current agent namespace.
 ### `memory_consolidate`
 Exposes the memory consolidation tool to manually trigger category-based semantic deduplication and link cascading.
 
+### `memory_quality_scan`
+Scans all memories for quality issues (content < 10 chars, expired ephemeral notes > 7 days, unresolved conflicts) and generates an Obsidian-compatible review batch markdown file.
+
+```js
+memory_quality_scan()                    // auto-generates batch file in Obsidian vault
+memory_quality_scan(outputPath="/tmp/review.md")  // custom output path
+```
+
 ---
 
 ## Development & Test
@@ -217,6 +267,7 @@ Test coverage includes:
 | `test/tokenize.test.ts` | Jieba Chinese segmentation, mixed-language, edge cases |
 | `test/bfs-gate.test.ts` | BFS relevance gate: filter / admit / disable |
 | `test/heat-decay.test.ts` | Time-decay heat boost: fresh > stale ranking, decay magnitude |
+| `test/quality-test.ts` | Quality gate: short text rejection, ephemeral marking, scan identification |
 | `test/evolution-test.ts` | Evolution mechanism: EVOLVE/CONFLICT/EXPAND/NEW paths (standalone) |
 
 ---

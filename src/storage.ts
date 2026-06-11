@@ -47,6 +47,9 @@ export interface MemoryNote {
   // ── Story 30: evolution mechanism ──────────────────────────────────────────
   evolution_type?: 'EVOLVE' | 'CONFLICT' | 'EXPAND' | 'NEW'
   conflict: boolean
+  // ── Story 31: quality scoring ──────────────────────────────────────────────
+  ephemeral: boolean // true when content contains temporal signal words
+  low_quality: boolean // true when content is too short or otherwise low-quality
 }
 
 export interface QueryResult {
@@ -141,6 +144,9 @@ function noteToPoint(note: MemoryNote) {
       // 30
       evolution_type: note.evolution_type || '',
       conflict: note.conflict ?? false,
+      // 31
+      ephemeral: note.ephemeral ?? false,
+      low_quality: note.low_quality ?? false,
     },
   }
 }
@@ -194,6 +200,9 @@ function pointToNote(point: { id: string; payload: Record<string, unknown>; vect
         ? (p.evolution_type as 'EVOLVE' | 'CONFLICT' | 'EXPAND' | 'NEW')
         : undefined,
     conflict: p.conflict === true,
+    // 31
+    ephemeral: p.ephemeral === true,
+    low_quality: p.low_quality === true,
   }
 }
 

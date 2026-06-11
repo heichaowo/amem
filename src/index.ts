@@ -16,6 +16,7 @@ import { addMemory, searchMemory, listMemories, mergeSimilarNotes, consolidateMe
 import { ensureCollection, updateNoteContent, invalidateNote } from './storage.js'
 import { encode } from './embedding.js'
 import { createHash } from 'crypto'
+import { generateReviewBatch } from './quality.js'
 
 // ── Config ────────────────────────────────────────────────────────────────────
 let _config: Record<string, unknown> = {}
@@ -257,7 +258,47 @@ function register(api: {
       { optional: true }
     )
 
-    logger.info('openclaw-amem: memory_search, memory_add, memory_list, memory_consolidate tools registered')
+    // ── registerTool: memory_quality_scan ────────────────────────────────────
+    api.registerTool(
+      {
+        name: 'memory_quality_scan',
+        label: 'Memory Quality Scan (A-MEM)',
+        description:
+          'Scan all memories for quality issues (too short, expired ephemeral, conflicts) and generate a review batch file.',
+        parameters: {
+          type: 'object',
+          properties: {
+            outputPath: {
+              type: 'string',
+              description: 'Custom output path for the review batch file (optional, auto-generates if omitted)',
+            },
+          },
+          required: [],
+        },
+        async execute(_toolCallId: string, params: { outputPath?: string }) {
+          const start = Date.now()
+          try {
+            const filePath = await generateReviewBatch(agentId, params.outputPath)
+            logger.info(`openclaw-amem: memory_quality_scan OK path=${filePath} (${Date.now() - start}ms)`)
+            return {
+              content: [{ type: 'text', text: `Quality scan complete. Review batch saved to: ${filePath}` }],
+              details: { ok: true, path: filePath },
+            }
+          } catch (err) {
+            logger.warn(`openclaw-amem: memory_quality_scan failed — ${(err as Error).message}`)
+            return {
+              content: [{ type: 'text', text: `Quality scan failed: ${(err as Error).message}` }],
+              details: { ok: false, error: String(err) },
+            }
+          }
+        },
+      },
+      { optional: true }
+    )
+
+    logger.info(
+      'openclaw-amem: memory_search, memory_add, memory_list, memory_consolidate, memory_quality_scan tools registered'
+    )
   } else {
     logger.warn('openclaw-amem: api.registerTool not available — tools not registered')
   }
@@ -430,6 +471,7 @@ const plugin = definePluginEntry({
 export default plugin
 export { register }
 export { addMemory, searchMemory, listMemories, mergeSimilarNotes, consolidateMemories } from './memory.js'
+export { checkQuality } from './memory.js'
 export {
   ensureCollection,
   getNote,
@@ -439,3 +481,4 @@ export {
   listNotes,
   patchNotePayload,
 } from './storage.js'
+export { scanLowQuality, generateReviewBatch } from './quality.js'
