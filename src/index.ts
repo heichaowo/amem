@@ -30,6 +30,7 @@ function register(api: {
   registerTool?: (tool: unknown, opts?: unknown) => void
   registerService?: (svc: unknown) => void
 }) {
+  const pluginStartTime = Date.now()
   const logger = api.logger
   _config = (api.pluginConfig as Record<string, unknown>) || {}
   const pluginConfig = _config as AmemPluginConfig
@@ -162,17 +163,27 @@ function register(api: {
         async execute(_toolCallId: string, params: { query: string; limit?: number; topicsFilter?: string[] }) {
           const { query, limit = 5, topicsFilter } = params
           const start = Date.now()
+          // Story 34: warn if agent_end hook never fired (likely blocked)
+          const pluginUptime = Date.now() - pluginStartTime
+          const hookWarning =
+            !hookEverFired && pluginUptime > 10 * 60 * 1000
+              ? '\n\n⚠️ Warning: agent_end hook has never fired. Automatic memory write-back may be disabled. ' +
+                'Set plugins.entries.openclaw-amem.hooks.allowConversationAccess=true in openclaw.json.'
+              : ''
           try {
             const results = await searchMemory(query, limit, agentId, { topicsFilter, storageCtx })
             logger.info(`openclaw-amem: memory_search "${query}" → ${results.length} results (${Date.now() - start}ms)`)
             if (!results.length) {
-              return { content: [{ type: 'text', text: 'No relevant memories found.' }], details: { count: 0 } }
+              return {
+                content: [{ type: 'text', text: 'No relevant memories found.' + hookWarning }],
+                details: { count: 0 },
+              }
             }
             const text = results
               .map((r, i) => `${i + 1}. ${r.content} (score: ${(r.similarity * 100).toFixed(0)}%, id: ${r.id})`)
               .join('\n')
             return {
-              content: [{ type: 'text', text: `Found ${results.length} memories:\n\n${text}` }],
+              content: [{ type: 'text', text: `Found ${results.length} memories:\n\n${text}${hookWarning}` }],
               details: { count: results.length, memories: results },
             }
           } catch (err) {
@@ -329,6 +340,8 @@ function register(api: {
   }
 
   // ── agent_end hook: auto-capture memories after each turn ─────────────────
+  let hookEverFired = false
+
   if (typeof (api as any).registerHook === 'function' || typeof (api as any).on === 'function') {
     const hookFn = (typeof (api as any).on === 'function' ? (api as any).on : (api as any).registerHook).bind(api)
     hookFn(
@@ -337,6 +350,7 @@ function register(api: {
         messages?: Array<{ role: string; content: string | Array<{ type: string; text?: string }> }>
         success?: boolean
       }) => {
+        hookEverFired = true
         logger.info(
           `openclaw-amem: agent_end hook triggered (success=${event.success}, messages=${event.messages?.length ?? 0})`
         )
@@ -444,6 +458,20 @@ function register(api: {
       { timeoutMs: 30000 }
     )
     logger.info('openclaw-amem: agent_end CRUD decision hook registered')
+
+    // Story 34: 10min self-check — warn if hook never fired (likely blocked)
+    setTimeout(
+      () => {
+        if (!hookEverFired) {
+          logger.warn(
+            '⚠️ openclaw-amem: agent_end hook has never fired in 10 minutes. ' +
+              'It may be blocked by OpenClaw security policy. ' +
+              'Add to openclaw.json: plugins.entries.openclaw-amem.hooks.allowConversationAccess=true'
+          )
+        }
+      },
+      10 * 60 * 1000
+    )
   }
 
   // ── scheduleNextRun ──────────────────────────────────────────────────────
