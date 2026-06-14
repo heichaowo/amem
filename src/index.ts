@@ -13,7 +13,7 @@ import * as os from 'os'
 import * as path from 'path'
 import { definePluginEntry } from 'openclaw/plugin-sdk/plugin-entry'
 import { addMemory, searchMemory, listMemories, mergeSimilarNotes, consolidateMemories } from './memory.js'
-import { ensureCollection, updateNoteContent, invalidateNote } from './storage.js'
+import { ensureCollection, createStorageContext, type AmemPluginConfig } from './storage.js'
 import { encode } from './embedding.js'
 import { createHash } from 'crypto'
 import { generateReviewBatch } from './quality.js'
@@ -21,27 +21,52 @@ import { generateReviewBatch } from './quality.js'
 // ── Config ────────────────────────────────────────────────────────────────────
 let _config: Record<string, unknown> = {}
 
-function getAgentId(cfg: Record<string, unknown>): string {
-  return (cfg.agentId as string) || 'main'
-}
-
 // ── OpenClaw plugin registration ──────────────────────────────────────────────
 function register(api: {
   logger: { info: (msg: string) => void; warn: (msg: string) => void; error: (msg: string) => void }
   pluginConfig?: Record<string, unknown>
+  agentId?: string
   registerMemoryCapability?: (cap: unknown) => void
   registerTool?: (tool: unknown, opts?: unknown) => void
   registerService?: (svc: unknown) => void
 }) {
   const logger = api.logger
   _config = (api.pluginConfig as Record<string, unknown>) || {}
-  const agentId = getAgentId(_config)
+  const pluginConfig = _config as AmemPluginConfig
+
+  // ── Story 32: Per-agent config resolution ────────────────────────────────────
+  // Priority: api.agentId (runtime) > pluginConfig.agentId (static) > 'main'
+  let currentAgentId: string
+  if (api.agentId) {
+    currentAgentId = api.agentId
+  } else if (pluginConfig.agentId) {
+    logger.warn(
+      `openclaw-amem: api.agentId not available, falling back to pluginConfig.agentId="${pluginConfig.agentId}"`
+    )
+    currentAgentId = pluginConfig.agentId
+  } else {
+    currentAgentId = 'main'
+  }
+
+  const agentCfg = pluginConfig.agents?.[currentAgentId] ?? {}
+  const effectiveAgentId = agentCfg.agentId ?? currentAgentId
+  const effectiveCollection = agentCfg.collection ?? pluginConfig.collection ?? undefined
+
+  // Mode B: agent has its own collection
+  const modeBIsolated = !!agentCfg.collection
+  const storageCtx = createStorageContext(effectiveCollection, modeBIsolated)
+
+  const agentId = effectiveAgentId
   const dbPath = path.join(os.homedir(), '.openclaw', 'amem_db')
 
-  logger.info(`openclaw-amem: registered (native TS, Qdrant, agent_id=${agentId})`)
+  logger.info(
+    `openclaw-amem: registered (native TS, Qdrant, agent_id=${agentId}, collection=${effectiveCollection ?? 'amem_notes (default)'}, mode=${modeBIsolated ? 'B-isolated' : 'A-shared'})`
+  )
 
   // Pre-warm: ensure Qdrant collection exists
-  ensureCollection().catch((e) => logger.warn(`openclaw-amem: ensureCollection failed — ${e.message}`))
+  ensureCollection(effectiveCollection).catch((e) =>
+    logger.warn(`openclaw-amem: ensureCollection failed — ${e.message}`)
+  )
 
   // ── registerMemoryCapability ─────────────────────────────────────────────
   if (typeof api.registerMemoryCapability === 'function') {
@@ -71,7 +96,7 @@ function register(api: {
                 async search(query: string, opts: { limit?: number; topK?: number } = {}) {
                   try {
                     const topK = opts.limit || opts.topK || 5
-                    const results = await searchMemory(query, topK, agentId)
+                    const results = await searchMemory(query, topK, agentId, { storageCtx })
                     return results.map((r) => ({
                       id: r.id,
                       memory: r.content,
@@ -86,7 +111,7 @@ function register(api: {
                 },
                 async add(text: string) {
                   try {
-                    await addMemory(text, agentId)
+                    await addMemory(text, agentId, { storageCtx })
                     return { ok: true }
                   } catch (err) {
                     logger.warn(`openclaw-amem: add failed — ${(err as Error).message}`)
@@ -138,7 +163,7 @@ function register(api: {
           const { query, limit = 5, topicsFilter } = params
           const start = Date.now()
           try {
-            const results = await searchMemory(query, limit, agentId, { topicsFilter })
+            const results = await searchMemory(query, limit, agentId, { topicsFilter, storageCtx })
             logger.info(`openclaw-amem: memory_search "${query}" → ${results.length} results (${Date.now() - start}ms)`)
             if (!results.length) {
               return { content: [{ type: 'text', text: 'No relevant memories found.' }], details: { count: 0 } }
@@ -179,7 +204,7 @@ function register(api: {
           const { text } = params
           const start = Date.now()
           try {
-            const id = await addMemory(text, agentId)
+            const id = await addMemory(text, agentId, { storageCtx })
             logger.info(`openclaw-amem: memory_add OK id=${id} (${Date.now() - start}ms)`)
             return {
               content: [{ type: 'text', text: 'Memory saved successfully.' }],
@@ -210,7 +235,7 @@ function register(api: {
         },
         async execute(_toolCallId: string, _params: Record<string, never>) {
           try {
-            const { count } = await listMemories(agentId)
+            const { count } = await listMemories(agentId, storageCtx)
             return {
               content: [{ type: 'text', text: `Total memories: ${count}` }],
               details: { count },
@@ -240,7 +265,7 @@ function register(api: {
         async execute(_toolCallId: string, _params: Record<string, never>) {
           const start = Date.now()
           try {
-            const merged = await consolidateMemories(agentId, logger)
+            const merged = await consolidateMemories(agentId, logger, storageCtx)
             logger.info(`openclaw-amem: memory_consolidate OK merged=${merged} (${Date.now() - start}ms)`)
             return {
               content: [{ type: 'text', text: `Consolidation completed. Merged ${merged} memory pairs.` }],
@@ -353,7 +378,7 @@ function register(api: {
           if (!userText || !shouldProcessTurn(userText)) return
 
           // ── Step 2: 检索 Top5 已有相关记忆 ─────────────────────────────────────────
-          const searchResults = await searchMemory(userText, 5, agentId)
+          const searchResults = await searchMemory(userText, 5, agentId, { storageCtx })
           const existingMemories = searchResults.map((r, idx) => ({
             idx,
             id: r.id,
@@ -373,14 +398,14 @@ function register(api: {
           // ── Step 4: 执行 CRUD 操作 ───────────────────────────────────────────────
           for (const op of operations) {
             if (op.action === 'NEW') {
-              await addMemory(op.fact, agentId)
+              await addMemory(op.fact, agentId, { storageCtx })
               logger.info(`openclaw-amem: CRUD NEW: "${op.fact.slice(0, 60)}${op.fact.length > 60 ? '...' : ''}"`)
             } else if (op.action === 'UPDATE' && op.existingIdx !== undefined) {
               const target = existingMemories[op.existingIdx]
               if (target) {
                 const newEmbedding = await encode(op.fact)
                 const hash = createHash('md5').update(op.fact).digest('hex')
-                await updateNoteContent(target.id, op.fact, newEmbedding, hash)
+                await storageCtx.updateNoteContent(target.id, op.fact, newEmbedding, hash)
                 logger.info(
                   `openclaw-amem: CRUD UPDATE id=${target.id.slice(0, 8)}: "${op.fact.slice(0, 60)}${op.fact.length > 60 ? '...' : ''}"`
                 )
@@ -388,7 +413,7 @@ function register(api: {
             } else if (op.action === 'DELETE' && op.existingIdx !== undefined) {
               const target = existingMemories[op.existingIdx]
               if (target) {
-                await invalidateNote(target.id)
+                await storageCtx.invalidateNote(target.id)
                 logger.info(
                   `openclaw-amem: CRUD INVALIDATE id=${target.id.slice(0, 8)}: "${op.fact.slice(0, 60)}${op.fact.length > 60 ? '...' : ''}"`
                 )
@@ -401,7 +426,7 @@ function register(api: {
           const today = new Date().toISOString().slice(0, 10)
           logger.info(`openclaw-amem: starting mergeSimilarNotes for agent=${agentId}, date=${today}`)
           try {
-            const merged = await mergeSimilarNotes(agentId)
+            const merged = await mergeSimilarNotes(agentId, storageCtx)
             if (merged > 0) {
               logger.info(`openclaw-amem: merged ${merged} similar notes today (${today})`)
             } else {
@@ -433,7 +458,7 @@ function register(api: {
     setTimeout(async () => {
       try {
         logger.info('openclaw-amem: Running scheduled daily consolidation...')
-        const merged = await consolidateMemories(agentId, logger)
+        const merged = await consolidateMemories(agentId, logger, storageCtx)
         if (merged > 0) {
           logger.info(`openclaw-amem: Scheduled daily consolidation merged ${merged} pairs.`)
         }

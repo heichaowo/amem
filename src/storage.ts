@@ -6,6 +6,23 @@
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
+// ── Story 32: Per-agent config types ──────────────────────────────────────────
+
+/** Per-agent override config. If collection is set, mode B (isolated collection) is used. */
+export interface AgentAmemConfig {
+  agentId?: string
+  collection?: string
+}
+
+/** Top-level plugin config shape (superset — existing fields preserved). */
+export interface AmemPluginConfig {
+  agentId?: string
+  collection?: string
+  topK?: number
+  /** Per-agent overrides keyed by agentId */
+  agents?: Record<string, AgentAmemConfig>
+}
+
 /** One entry in a note's evolution history (Story 13-B) */
 export interface EvolutionEntry {
   triggeredBy: string // ID of the new note that caused this evolution
@@ -50,6 +67,10 @@ export interface MemoryNote {
   // ── Story 31: quality scoring ──────────────────────────────────────────────
   ephemeral: boolean // true when content contains temporal signal words
   low_quality: boolean // true when content is too short or otherwise low-quality
+  // ── Story 32: per-agent ownership and access control ─────────────────────
+  owner: string // agent_id of the writer
+  readers: string[] // ["*"] = all agents; [agentId] = owner-only
+  writers: string[] // default [owner]; enforcement TODO in Story 33
 }
 
 export interface QueryResult {
@@ -78,39 +99,62 @@ async function qdrant(method: string, path: string, body?: unknown): Promise<unk
 
 // ── Collection init ───────────────────────────────────────────────────────────
 let _collectionReady = false
+/** Track ready state per named collection (for mode B isolated collections). */
+const _collectionReadyMap = new Map<string, boolean>()
 
 /** Reset the collection-ready flag. Used in tests after dropping the collection. */
 export function resetCollectionReady(): void {
   _collectionReady = false
+  _collectionReadyMap.clear()
 }
 
-export async function ensureCollection(): Promise<void> {
-  if (_collectionReady) return
+/**
+ * Ensure the given Qdrant collection exists with the correct schema.
+ * If collectionName is omitted, uses process.env.AMEM_COLLECTION (default: amem_notes).
+ * Mode B agents pass their dedicated collection name here.
+ */
+export async function ensureCollection(collectionName?: string): Promise<void> {
+  const col = collectionName || getCollection()
+  if (collectionName) {
+    if (_collectionReadyMap.get(col)) return
+  } else {
+    if (_collectionReady) return
+  }
+  const markReady = () => {
+    if (collectionName) _collectionReadyMap.set(col, true)
+    else _collectionReady = true
+  }
   try {
-    await qdrant('GET', `/collections/${getCollection()}`)
-    _collectionReady = true
+    await qdrant('GET', `/collections/${col}`)
+    markReady()
+    return
   } catch {
-    // Create collection
-    await qdrant('PUT', `/collections/${getCollection()}`, {
+    // Collection does not exist — create it below
+  }
+  try {
+    await qdrant('PUT', `/collections/${col}`, {
       vectors: { size: VECTOR_DIM, distance: 'Cosine' },
     })
-    // Index agent_id for fast filtering
-    await qdrant('PUT', `/collections/${getCollection()}/index`, {
-      field_name: 'agent_id',
-      field_schema: 'keyword',
-    })
-    // Index hash for exact-match dedup
-    await qdrant('PUT', `/collections/${getCollection()}/index`, {
-      field_name: 'hash',
-      field_schema: 'keyword',
-    })
-    // Story 26B: Index topics for knowledge note filtering
-    await qdrant('PUT', `/collections/${getCollection()}/index`, {
-      field_name: 'topics',
-      field_schema: 'keyword',
-    })
-    _collectionReady = true
+  } catch (err) {
+    // If another concurrent call already created it, that's fine
+    if (!(err instanceof Error) || !err.message.includes('already exists')) throw err
   }
+  // Index agent_id for fast filtering
+  await qdrant('PUT', `/collections/${col}/index`, {
+    field_name: 'agent_id',
+    field_schema: 'keyword',
+  })
+  // Index hash for exact-match dedup
+  await qdrant('PUT', `/collections/${col}/index`, {
+    field_name: 'hash',
+    field_schema: 'keyword',
+  })
+  // Story 26B: Index topics for knowledge note filtering
+  await qdrant('PUT', `/collections/${col}/index`, {
+    field_name: 'topics',
+    field_schema: 'keyword',
+  })
+  markReady()
 }
 
 // ── Payload mapping ───────────────────────────────────────────────────────────
@@ -147,6 +191,10 @@ function noteToPoint(note: MemoryNote) {
       // 31
       ephemeral: note.ephemeral ?? false,
       low_quality: note.low_quality ?? false,
+      // 32
+      owner: note.owner || note.agent_id,
+      readers: note.readers ?? [note.agent_id],
+      writers: note.writers ?? [note.agent_id],
     },
   }
 }
@@ -203,6 +251,10 @@ function pointToNote(point: { id: string; payload: Record<string, unknown>; vect
     // 31
     ephemeral: p.ephemeral === true,
     low_quality: p.low_quality === true,
+    // 32
+    owner: (p.owner as string) || (p.agent_id as string) || 'main',
+    readers: Array.isArray(p.readers) ? (p.readers as string[]) : [(p.agent_id as string) || 'main'],
+    writers: Array.isArray(p.writers) ? (p.writers as string[]) : [(p.agent_id as string) || 'main'],
   }
 }
 
@@ -222,77 +274,270 @@ function agentFilter(agentId: string) {
 }
 
 // ── CRUD ──────────────────────────────────────────────────────────────────────
-export async function addNote(note: MemoryNote): Promise<void> {
-  await ensureCollection()
-  await qdrant('PUT', `/collections/${getCollection()}/points?wait=true`, {
-    points: [noteToPoint(note)],
-  })
-}
-
-export async function getNote(id: string): Promise<MemoryNote | null> {
-  await ensureCollection()
-  try {
-    const result = (await qdrant('POST', `/collections/${getCollection()}/points`, {
-      ids: [id],
-      with_payload: true,
-      with_vector: true,
-    })) as Array<{ id: string; payload: Record<string, unknown>; vector: number[] }>
-    if (!result.length) return null
-    return pointToNote(result[0])
-  } catch {
-    return null
-  }
-}
-
-export async function updateNote(note: MemoryNote): Promise<void> {
-  await addNote(note) // upsert
-}
 
 /**
- * Find a note by exact MD5 hash match within an agent's scope.
- * Returns the first match, or null if none found.
+ * Core CRUD implementation scoped to a specific collection and agent filter mode.
+ * collectionName: which Qdrant collection to operate on.
+ * modeBIsolated: if true, skip the "also include shared" filter in agentFilter
+ *   (mode B collections are already per-agent, so no cross-agent filter needed).
  */
-export async function findByHash(hash: string, agentId: string): Promise<MemoryNote | null> {
-  await ensureCollection()
-  const body = {
-    filter: {
-      must: [
-        { key: 'hash', match: { value: hash } },
-        { key: 'is_active', match: { value: true } },
-        {
+function makeCrud(collectionName: string, modeBIsolated = false) {
+  const col = collectionName
+
+  function scopedAgentFilter(agentId: string) {
+    if (modeBIsolated) {
+      // Mode B: collection is already agent-isolated; just exclude inactive notes
+      return {
+        must_not: [{ key: 'is_active', match: { value: false } }],
+      }
+    }
+    return agentFilter(agentId)
+  }
+
+  return {
+    async addNote(note: MemoryNote): Promise<void> {
+      await ensureCollection(col)
+      await qdrant('PUT', `/collections/${col}/points?wait=true`, {
+        points: [noteToPoint(note)],
+      })
+    },
+
+    async getNote(id: string): Promise<MemoryNote | null> {
+      await ensureCollection(col)
+      try {
+        const result = (await qdrant('POST', `/collections/${col}/points`, {
+          ids: [id],
+          with_payload: true,
+          with_vector: true,
+        })) as Array<{ id: string; payload: Record<string, unknown>; vector: number[] }>
+        if (!result.length) return null
+        return pointToNote(result[0])
+      } catch {
+        return null
+      }
+    },
+
+    async updateNote(note: MemoryNote): Promise<void> {
+      await ensureCollection(col)
+      await qdrant('PUT', `/collections/${col}/points?wait=true`, {
+        points: [noteToPoint(note)],
+      })
+    },
+
+    async findByHash(hash: string, agentId: string): Promise<MemoryNote | null> {
+      await ensureCollection(col)
+      const body = {
+        filter: {
+          must: [
+            { key: 'hash', match: { value: hash } },
+            { key: 'is_active', match: { value: true } },
+            ...(modeBIsolated
+              ? []
+              : [
+                  {
+                    should: [
+                      { key: 'agent_id', match: { value: agentId } },
+                      { key: 'agent_id', match: { value: 'shared' } },
+                    ],
+                  },
+                ]),
+          ],
+        },
+        with_payload: true,
+        with_vector: true,
+        limit: 1,
+      }
+      const result = (await qdrant('POST', `/collections/${col}/points/scroll`, body)) as {
+        points: Array<{ id: string; payload: Record<string, unknown>; vector: number[] }>
+      }
+      if (!result.points.length) return null
+      return pointToNote(result.points[0])
+    },
+
+    async updateNoteContent(id: string, content: string, embedding: number[], hash: string): Promise<void> {
+      await ensureCollection(col)
+      await qdrant('PUT', `/collections/${col}/points/vectors?wait=true`, {
+        points: [{ id, vector: embedding }],
+      })
+      await qdrant('POST', `/collections/${col}/points/payload?wait=true`, {
+        payload: { content, hash },
+        points: [id],
+      })
+    },
+
+    async queryByEmbedding(
+      embedding: number[],
+      topK: number,
+      agentId: string,
+      scoreThreshold = 0.0
+    ): Promise<QueryResult[]> {
+      await ensureCollection(col)
+      const result = (await qdrant('POST', `/collections/${col}/points/search`, {
+        vector: embedding,
+        limit: topK,
+        with_payload: true,
+        with_vector: true,
+        score_threshold: scoreThreshold,
+        filter: scopedAgentFilter(agentId),
+      })) as Array<{ id: string; score: number; payload: Record<string, unknown>; vector: number[] }>
+
+      const queryResults = result.map((r) => ({
+        note: pointToNote(r),
+        score: r.score,
+      }))
+
+      if (queryResults.length > 0) {
+        const now = new Date().toISOString()
+        const ids = queryResults.map((r) => r.note.id)
+        const patches = queryResults.map((r) => ({
+          id: r.note.id,
+          retrieval_count: (r.note.retrieval_count || 0) + 1,
+        }))
+        Promise.all([
+          qdrant('POST', `/collections/${col}/points/payload?wait=false`, {
+            payload: { last_accessed: now },
+            points: ids,
+          }),
+          ...patches.map((p) =>
+            qdrant('POST', `/collections/${col}/points/payload?wait=false`, {
+              payload: { retrieval_count: p.retrieval_count },
+              points: [p.id],
+            })
+          ),
+        ]).catch((err: unknown) => {
+          console.error(`[amem] retrieval tracking patch failed: ${(err as Error).message}`)
+        })
+        for (const r of queryResults) {
+          r.note.retrieval_count = (r.note.retrieval_count || 0) + 1
+          r.note.last_accessed = now
+        }
+      }
+
+      return queryResults
+    },
+
+    async listNotes(agentId?: string): Promise<MemoryNote[]> {
+      await ensureCollection(col)
+      const body: Record<string, unknown> = {
+        with_payload: true,
+        with_vector: true,
+        limit: 10000,
+      }
+      if (agentId) body.filter = scopedAgentFilter(agentId)
+
+      const result = (await qdrant('POST', `/collections/${col}/points/scroll`, body)) as {
+        points: Array<{ id: string; payload: Record<string, unknown>; vector: number[] }>
+      }
+      return result.points.map(pointToNote)
+    },
+
+    async deleteNote(id: string): Promise<void> {
+      await ensureCollection(col)
+      await qdrant('POST', `/collections/${col}/points/delete`, {
+        points: [id],
+      })
+    },
+
+    async invalidateNote(id: string): Promise<void> {
+      await ensureCollection(col)
+      await qdrant('POST', `/collections/${col}/points/payload?wait=true`, {
+        payload: { is_active: false },
+        points: [id],
+      })
+    },
+
+    async getNotesByDatePrefix(datePrefix: string, agentId: string): Promise<MemoryNote[]> {
+      await ensureCollection(col)
+      const filterClauses: unknown[] = [{ key: 'is_active', match: { value: true } }]
+      if (!modeBIsolated) {
+        filterClauses.push({
           should: [
             { key: 'agent_id', match: { value: agentId } },
             { key: 'agent_id', match: { value: 'shared' } },
           ],
-        },
-      ],
+        })
+      }
+      const body: Record<string, unknown> = {
+        filter: { must: filterClauses },
+        with_payload: true,
+        with_vector: true,
+        limit: 10000,
+      }
+      const result = (await qdrant('POST', `/collections/${col}/points/scroll`, body)) as {
+        points: Array<{ id: string; payload: Record<string, unknown>; vector: number[] }>
+      }
+      return result.points.map(pointToNote).filter((n) => n.timestamp.startsWith(datePrefix))
     },
-    with_payload: true,
-    with_vector: true,
-    limit: 1,
+
+    async countNotes(agentId?: string): Promise<number> {
+      await ensureCollection(col)
+      const body: Record<string, unknown> = { exact: true }
+      if (agentId) body.filter = scopedAgentFilter(agentId)
+      const result = (await qdrant('POST', `/collections/${col}/points/count`, body)) as { count: number }
+      return result.count
+    },
+
+    async updateNoteLinks(id: string, links: string[]): Promise<void> {
+      await ensureCollection(col)
+      await qdrant('POST', `/collections/${col}/points/payload?wait=true`, {
+        payload: { links },
+        points: [id],
+      })
+    },
+
+    async patchNotePayload(id: string, fields: Record<string, unknown>): Promise<void> {
+      await ensureCollection(col)
+      await qdrant('POST', `/collections/${col}/points/payload?wait=true`, {
+        payload: fields,
+        points: [id],
+      })
+    },
+
+    async replaceLinkReferences(oldId: string, newId: string, agentId: string): Promise<void> {
+      const notes = await this.listNotes(agentId)
+      for (const note of notes) {
+        if (note.links.includes(oldId)) {
+          const newLinks = note.links.map((linkId) => (linkId === oldId ? newId : linkId))
+          const filteredLinks = newLinks.filter((linkId) => linkId !== note.id)
+          const uniqueLinks = Array.from(new Set(filteredLinks))
+          await this.updateNoteLinks(note.id, uniqueLinks)
+        }
+      }
+    },
   }
-  const result = (await qdrant('POST', `/collections/${getCollection()}/points/scroll`, body)) as {
-    points: Array<{ id: string; payload: Record<string, unknown>; vector: number[] }>
-  }
-  if (!result.points.length) return null
-  return pointToNote(result.points[0])
 }
 
+export type StorageContext = ReturnType<typeof makeCrud>
+
 /**
- * Update content, embedding, and hash of an existing note (partial update).
- * Other fields (keywords, tags, context, links, etc.) are preserved.
+ * Create a StorageContext scoped to a specific collection (mode B) or the default collection (mode A).
+ * Mode A (same collection): pass collectionName = undefined → uses AMEM_COLLECTION env var.
+ * Mode B (isolated collection): pass collectionName = 'amem_notes_<agentId>' and modeBIsolated = true.
  */
+export function createStorageContext(collectionName?: string, modeBIsolated = false): StorageContext {
+  return makeCrud(collectionName || getCollection(), modeBIsolated)
+}
+
+// ── Legacy top-level exports (backwards compat, use default collection) ────────
+
+export async function addNote(note: MemoryNote): Promise<void> {
+  return makeCrud(getCollection()).addNote(note)
+}
+
+export async function getNote(id: string): Promise<MemoryNote | null> {
+  return makeCrud(getCollection()).getNote(id)
+}
+
+export async function updateNote(note: MemoryNote): Promise<void> {
+  return makeCrud(getCollection()).updateNote(note)
+}
+
+export async function findByHash(hash: string, agentId: string): Promise<MemoryNote | null> {
+  return makeCrud(getCollection()).findByHash(hash, agentId)
+}
+
 export async function updateNoteContent(id: string, content: string, embedding: number[], hash: string): Promise<void> {
-  await ensureCollection()
-  // Update the vector
-  await qdrant('PUT', `/collections/${getCollection()}/points/vectors?wait=true`, {
-    points: [{ id, vector: embedding }],
-  })
-  // Update the payload fields
-  await qdrant('POST', `/collections/${getCollection()}/points/payload?wait=true`, {
-    payload: { content, hash },
-    points: [id],
-  })
+  return makeCrud(getCollection()).updateNoteContent(id, content, embedding, hash)
 }
 
 export async function queryByEmbedding(
@@ -301,157 +546,37 @@ export async function queryByEmbedding(
   agentId: string,
   scoreThreshold = 0.0
 ): Promise<QueryResult[]> {
-  await ensureCollection()
-  const result = (await qdrant('POST', `/collections/${getCollection()}/points/search`, {
-    vector: embedding,
-    limit: topK,
-    with_payload: true,
-    with_vector: true,
-    score_threshold: scoreThreshold,
-    filter: agentFilter(agentId),
-  })) as Array<{ id: string; score: number; payload: Record<string, unknown>; vector: number[] }>
-
-  const queryResults = result.map((r) => ({
-    note: pointToNote(r),
-    score: r.score,
-  }))
-
-  // 13-A: Batch-update retrieval_count and last_accessed for all hits (non-blocking)
-  if (queryResults.length > 0) {
-    const now = new Date().toISOString()
-    const ids = queryResults.map((r) => r.note.id)
-
-    // Fire-and-forget: increment retrieval_count per-point
-    // Qdrant doesn't support atomic increment via payload patch, so we
-    // compute the new count from the in-memory note and patch it.
-    const patches = queryResults.map((r) => ({
-      id: r.note.id,
-      retrieval_count: (r.note.retrieval_count || 0) + 1,
-    }))
-
-    // We send individual patches (each has a different retrieval_count value),
-    // but group the shared last_accessed update in one bulk call.
-    Promise.all([
-      // last_accessed bulk update (same value for all)
-      qdrant('POST', `/collections/${getCollection()}/points/payload?wait=false`, {
-        payload: { last_accessed: now },
-        points: ids,
-      }),
-      // per-note retrieval_count increments
-      ...patches.map((p) =>
-        qdrant('POST', `/collections/${getCollection()}/points/payload?wait=false`, {
-          payload: { retrieval_count: p.retrieval_count },
-          points: [p.id],
-        })
-      ),
-    ]).catch((err: unknown) => {
-      // Non-fatal: retrieval tracking failure must not break search
-      console.error(`[amem] retrieval tracking patch failed: ${(err as Error).message}`)
-    })
-
-    // Update in-memory note objects so callers see fresh values immediately
-    for (const r of queryResults) {
-      r.note.retrieval_count = (r.note.retrieval_count || 0) + 1
-      r.note.last_accessed = now
-    }
-  }
-
-  return queryResults
+  return makeCrud(getCollection()).queryByEmbedding(embedding, topK, agentId, scoreThreshold)
 }
 
 export async function listNotes(agentId?: string): Promise<MemoryNote[]> {
-  await ensureCollection()
-  const body: Record<string, unknown> = {
-    with_payload: true,
-    with_vector: true,
-    limit: 10000,
-  }
-  if (agentId) body.filter = agentFilter(agentId)
-
-  const result = (await qdrant('POST', `/collections/${getCollection()}/points/scroll`, body)) as {
-    points: Array<{ id: string; payload: Record<string, unknown>; vector: number[] }>
-  }
-  return result.points.map(pointToNote)
+  return makeCrud(getCollection()).listNotes(agentId)
 }
 
 export async function deleteNote(id: string): Promise<void> {
-  await ensureCollection()
-  await qdrant('POST', `/collections/${getCollection()}/points/delete`, {
-    points: [id],
-  })
+  return makeCrud(getCollection()).deleteNote(id)
 }
 
 export async function invalidateNote(id: string): Promise<void> {
-  await ensureCollection()
-  await qdrant('POST', `/collections/${getCollection()}/points/payload?wait=true`, {
-    payload: { is_active: false },
-    points: [id],
-  })
+  return makeCrud(getCollection()).invalidateNote(id)
 }
 
-/**
- * Fetch all notes for a given agentId whose timestamp starts with datePrefix (e.g. "2026-05-15").
- * Qdrant does not support string prefix filters, so we scroll all agent notes and filter in memory.
- */
 export async function getNotesByDatePrefix(datePrefix: string, agentId: string): Promise<MemoryNote[]> {
-  await ensureCollection()
-  const body: Record<string, unknown> = {
-    filter: {
-      must: [
-        { key: 'is_active', match: { value: true } },
-        {
-          should: [
-            { key: 'agent_id', match: { value: agentId } },
-            { key: 'agent_id', match: { value: 'shared' } },
-          ],
-        },
-      ],
-    },
-    with_payload: true,
-    with_vector: true,
-    limit: 10000,
-  }
-  const result = (await qdrant('POST', `/collections/${getCollection()}/points/scroll`, body)) as {
-    points: Array<{ id: string; payload: Record<string, unknown>; vector: number[] }>
-  }
-  return result.points.map(pointToNote).filter((n) => n.timestamp.startsWith(datePrefix))
+  return makeCrud(getCollection()).getNotesByDatePrefix(datePrefix, agentId)
 }
 
 export async function countNotes(agentId?: string): Promise<number> {
-  await ensureCollection()
-  const body: Record<string, unknown> = { exact: true }
-  if (agentId) body.filter = agentFilter(agentId)
-
-  const result = (await qdrant('POST', `/collections/${getCollection()}/points/count`, body)) as {
-    count: number
-  }
-  return result.count
+  return makeCrud(getCollection()).countNotes(agentId)
 }
 
 export async function updateNoteLinks(id: string, links: string[]): Promise<void> {
-  await ensureCollection()
-  await qdrant('POST', `/collections/${getCollection()}/points/payload?wait=true`, {
-    payload: { links },
-    points: [id],
-  })
+  return makeCrud(getCollection()).updateNoteLinks(id, links)
 }
 
 export async function patchNotePayload(id: string, fields: Record<string, unknown>): Promise<void> {
-  await ensureCollection()
-  await qdrant('POST', `/collections/${getCollection()}/points/payload?wait=true`, {
-    payload: fields,
-    points: [id],
-  })
+  return makeCrud(getCollection()).patchNotePayload(id, fields)
 }
 
 export async function replaceLinkReferences(oldId: string, newId: string, agentId: string): Promise<void> {
-  const notes = await listNotes(agentId)
-  for (const note of notes) {
-    if (note.links.includes(oldId)) {
-      const newLinks = note.links.map((linkId) => (linkId === oldId ? newId : linkId))
-      const filteredLinks = newLinks.filter((linkId) => linkId !== note.id)
-      const uniqueLinks = Array.from(new Set(filteredLinks))
-      await updateNoteLinks(note.id, uniqueLinks)
-    }
-  }
+  return makeCrud(getCollection()).replaceLinkReferences(oldId, newId, agentId)
 }
