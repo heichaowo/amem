@@ -41,6 +41,7 @@ Final Score = RRF Score × (1 + 0.05 × ln(1 + retrieval_count) / (age_days + 1)
 *   🏷️ **Topic Tags for Knowledge Notes** — `knowledge`-type notes carry a `topics: string[]` field (1-5 concise subject labels, e.g. `["TypeScript", "Qdrant"]`). The `memory_search` tool accepts a `topicsFilter` parameter (AND semantics, case-insensitive) for precise knowledge retrieval by subject.
 *   🛡️ **Strict Quality Controls** — Full Vitest test coverage for embeddings, storage, link-cascading consolidation, tokenization, and BFS gate behavior, integrated into ESLint + Prettier + import boundary CI checks running on GitHub Actions.
 *   📊 **Quality Scoring & Auto-Review** — Write-time quality gate rejects content under 10 characters and marks temporal/ephemeral content (containing signal words like '待跑', '等确认'). The `memory_quality_scan` tool scans the full memory store, identifies low-quality entries (too short, expired ephemeral >7 days, unresolved conflicts), and generates Obsidian-compatible review batch files for human curation.
+*   🔐 **Per-Agent Memory Isolation** — Each agent operates in its own private memory namespace. Memories written by `main` are invisible to `dev` by default. A `shared` scope lets the writing agent publish memories readable by all agents, with explicit `owner`/`readers`/`writers` access fields on every note. Two modes: Mode A (shared Qdrant collection, filtered by `agent_id`) and Mode B (dedicated collection per agent, full physical isolation).
 
 ---
 
@@ -132,6 +133,54 @@ Flagged notes are patched with `low_quality: true` in Qdrant.
 
 ---
 
+## Agent Isolation (Story 32)
+
+Each OpenClaw agent gets its own private memory namespace. Memories written by `main` are not visible to `dev` or other agents by default.
+
+### Mode A — Shared Collection (default)
+
+All agents share one Qdrant collection (`amem_notes`), isolated by `agent_id` filter at query time:
+
+| Scope | `agent_id` in Qdrant | `readers` | Visible to |
+|-------|---------------------|-----------|------------|
+| Private (default) | `"main"` | `["main"]` | Only the writing agent |
+| Shared | `"shared"` | `["*"]` | All agents |
+
+### Mode B — Dedicated Collection
+
+Each agent gets a physically isolated Qdrant collection:
+
+```json
+"agents": {
+  "dev": {
+    "agentId": "dev",
+    "collection": "amem_notes_dev"
+  }
+}
+```
+
+In Mode B, `dev` reads and writes only `amem_notes_dev`. Shared notes written by `main` are not visible to `dev` (no cross-collection sharing).
+
+### Access fields on every note
+
+Every `MemoryNote` carries three access fields:
+
+```ts
+{
+  owner:   "main",      // the agent that wrote this note
+  readers: ["main"],    // ["*"] = all agents; ["main"] = private
+  writers: ["main"]     // writers enforcement: Story 33
+}
+```
+
+### Design rationale
+
+amem uses an **explicit** `agent_id="shared"` marker rather than mem0's implicit null-scoping (omitting `agent_id` to indicate shared access). Per [arXiv:2604.16548], isolation should be the default; sharing is an explicit, auditable exception. amem's approach makes shared notes immediately identifiable in the database.
+
+Consolidation runs per-agent scope: `dev`'s consolidation never touches `main`'s private notes or shared notes.
+
+---
+
 ## Requirements
 
 *   OpenClaw v2026.4+
@@ -190,10 +239,11 @@ openclaw gateway restart
 
 ## Plugin Configuration Reference
 
-| Key | Default | Description |
-|-----|---------|-------------|
-| `agentId` | `"main"` | Agent namespace for memory isolation |
-| `topK` | `5` | Maximum memories to retrieve during search |
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `agentId` | `string` | `"main"` | Agent namespace for memory isolation |
+| `topK` | `number` | `5` | Maximum memories to retrieve during search |
+| `agents` | `Record<string, {agentId?, collection?}>` | `{}` | Per-agent overrides. Set `collection` for Mode B physical isolation. |
 
 ---
 
@@ -257,6 +307,7 @@ Test coverage includes:
 | `test/heat-decay.test.ts` | Time-decay heat boost: fresh > stale ranking, decay magnitude |
 | `test/quality-test.ts` | Quality gate: short text rejection, ephemeral marking, scan identification |
 | `test/evolution-test.ts` | Evolution mechanism: EVOLVE/CONFLICT/EXPAND/NEW paths (standalone) |
+| `test/agent-isolation.test.ts` | Story 32: per-agent private/shared isolation, cross-agent consolidation safety, shared note field correctness |
 
 ---
 
@@ -272,6 +323,13 @@ This plugin implements and extends the following prior work:
 | Sun et al., _E5: Text Embeddings by Weakly Supervised Contrastive Pre-training_, arXiv:2212.03533, 2022 | Embedding model family reference for multilingual retrieval quality benchmarks |
 | Sun et al., _Jieba Chinese Text Segmentation_ · [github.com/fxsjy/jieba](https://github.com/fxsjy/jieba) | Chinese word segmentation for BM25 (via `@node-rs/jieba`, Rust port) |
 | Cormack et al., _Reciprocal Rank Fusion outperforms Condorcet and individual Rank Learning Methods_, SIGIR 2009 | RRF fusion formula used to merge BM25 and dense vector ranked lists |
+| Chhikara et al., _Mem0: Building Production-Ready AI Agents with Scalable Long-Term Memory_, ECAI 2025 · [arXiv:2504.19413](https://arxiv.org/abs/2504.19413) | Multi-dimensional scope isolation (user_id/agent_id/run_id/app_id); amem's explicit shared marker vs mem0's implicit null-scoping |
+| _Multi-Agent Memory from a Computer Architecture Perspective_, arXiv:2603.10062, 2026 | Private/shared/distributed memory hierarchy; access protocol design |
+| _Security of Long-Term Memory in LLM Agents_, arXiv:2604.16548, 2026 | Isolation-by-default principle; explicit sharing as exception |
+| Kerestecioglu et al., _Human-Inspired Memory Architecture for LLM Agents_, arXiv:2605.08538, Microsoft, 2026 | Sleep-phase consolidation design |
+| _Governing Evolving Memory in LLM Agents: SSGM Framework_, arXiv:2603.11768, 2026 | Memory evolution taxonomy (EVOLVE/CONFLICT/EXPAND/NEW) |
+| _Graph-based Agent Memory: Taxonomy, Techniques, and Applications_, arXiv:2602.05665, 2026 | Conflict detection in graph memory updates |
+| _Memory in the LLM Era_, arXiv:2604.01707, 2026 | Memory operations taxonomy |
 
 ---
 
