@@ -9,22 +9,7 @@ import * as fs from 'fs'
 import * as path from 'path'
 import * as os from 'os'
 import { encode, cosineSimilarity } from './embedding.js'
-import {
-  addNote,
-  getNote,
-  updateNote,
-  queryByEmbedding,
-  listNotes,
-  countNotes,
-  findByHash,
-  updateNoteContent,
-  deleteNote,
-  getNotesByDatePrefix,
-  replaceLinkReferences,
-  invalidateNote,
-  patchNotePayload,
-  type MemoryNote,
-} from './storage.js'
+import { createStorageContext, type MemoryNote, type StorageContext } from './storage.js'
 import { llmConstructNote, llmShouldLink, llmEvolveNote, llmShouldMerge, llmEvolutionJudge } from './llm.js'
 import { shouldRunEvolution } from './evo-counter.js'
 import { Jieba } from '@node-rs/jieba'
@@ -140,17 +125,37 @@ export function checkQuality(content: string): QualityCheckResult {
   return { ok: true, ephemeral }
 }
 
+// ── Story 32: default storage context helper ──────────────────────────────────
+/** Returns the default storage context (mode A: shared collection, agent filter). */
+function defaultCtx(): StorageContext {
+  return createStorageContext()
+}
+
 // ── addMemory ─────────────────────────────────────────────────────────────────
-export async function addMemory(content: string, agentId = 'main'): Promise<string> {
+export async function addMemory(
+  content: string,
+  agentId = 'main',
+  opts?: {
+    scope?: 'private' | 'shared'
+    storageCtx?: StorageContext
+  }
+): Promise<string> {
+  const scope = opts?.scope ?? 'private'
+  const ctx = opts?.storageCtx ?? defaultCtx()
+
   // ── Story 31: Quality gate ──────────────────────────────────────────────────
   const quality = checkQuality(content)
   if (!quality.ok) {
     throw new Error(`[quality] 写入拒绝: ${quality.reason}`)
   }
 
+  // ── Story 32: effective agent_id for the stored note ─────────────────────────
+  // shared scope writes agent_id='shared'; private scope writes the real agentId
+  const effectiveNoteAgentId = scope === 'shared' ? 'shared' : agentId
+
   // ── Layer 1: Exact hash dedup (before LLM & embedding, cheapest check) ──────
   const hash = createHash('md5').update(content).digest('hex')
-  const existingByHash = await findByHash(hash, agentId)
+  const existingByHash = await ctx.findByHash(hash, agentId)
   if (existingByHash) {
     console.log(`[add] dedup: exact hash match, skipping (id=${existingByHash.id.slice(0, 8)})`)
     return existingByHash.id
@@ -171,10 +176,10 @@ export async function addMemory(content: string, agentId = 'main'): Promise<stri
   const embedding = await encode(fieldsText)
 
   // ── Layer 2: High-similarity vector dedup (UPDATE instead of INSERT) ─────────
-  const topMatch = await queryByEmbedding(embedding, 1, agentId, 0.0)
+  const topMatch = await ctx.queryByEmbedding(embedding, 1, agentId, 0.0)
   if (topMatch.length > 0 && topMatch[0].score >= 0.85) {
     console.log(`[add] dedup: high-sim match (sim=${topMatch[0].score.toFixed(3)}), updating existing`)
-    await updateNoteContent(topMatch[0].note.id, content, embedding, hash)
+    await ctx.updateNoteContent(topMatch[0].note.id, content, embedding, hash)
     return topMatch[0].note.id
   }
 
@@ -183,6 +188,10 @@ export async function addMemory(content: string, agentId = 'main'): Promise<stri
   if (pendingMerge) {
     console.log(`[add] dedup: borderline sim (sim=${topMatch[0].score.toFixed(3)}), marking pending_merge=true`)
   }
+
+  // ── Story 32: ownership and access control fields ─────────────────────────
+  const readers: string[] = scope === 'shared' ? ['*'] : [agentId]
+  const writers: string[] = [agentId]
 
   const note: MemoryNote = {
     id: uuidv4(),
@@ -193,7 +202,7 @@ export async function addMemory(content: string, agentId = 'main'): Promise<stri
     context,
     embedding,
     links: [],
-    agent_id: agentId,
+    agent_id: effectiveNoteAgentId,
     hash,
     // 13-A
     retrieval_count: 0,
@@ -214,17 +223,21 @@ export async function addMemory(content: string, agentId = 'main'): Promise<stri
     // 31
     ephemeral: quality.ephemeral,
     low_quality: false,
+    // 32
+    owner: agentId,
+    readers,
+    writers,
   }
 
   // Save first
-  await addNote(note)
+  await ctx.addNote(note)
   console.log(`  saved note ${note.id}`)
 
   // Step 2: Link Generation
   try {
-    const total = await countNotes(agentId)
+    const total = await ctx.countNotes(agentId)
     if (total > 1) {
-      const candidates = await queryByEmbedding(embedding, 6, agentId, 0.0)
+      const candidates = await ctx.queryByEmbedding(embedding, 6, agentId, 0.0)
 
       const linkedIds: string[] = []
       const linkedContents: string[] = []
@@ -244,14 +257,14 @@ export async function addMemory(content: string, agentId = 'main'): Promise<stri
 
       if (linkedIds.length > 0) {
         note.links = linkedIds
-        await updateNote(note)
+        await ctx.updateNote(note)
 
         // Bidirectional links
         for (const lid of linkedIds) {
-          const linked = await getNote(lid)
+          const linked = await ctx.getNote(lid)
           if (linked && !linked.links.includes(note.id)) {
             linked.links.push(note.id)
-            await updateNote(linked)
+            await ctx.updateNote(linked)
           }
         }
 
@@ -259,14 +272,14 @@ export async function addMemory(content: string, agentId = 'main'): Promise<stri
         if (shouldRunEvolution()) {
           console.log(`  [evo] threshold reached, running evolution for ${Math.min(linkedIds.length, 3)} linked notes`)
           for (const lid of linkedIds.slice(0, 3)) {
-            const linked = await getNote(lid)
+            const linked = await ctx.getNote(lid)
             if (!linked) continue
 
             // Gather link contents and IDs
             const linkedNotes: Array<{ id: string; content: string }> = []
             for (const llid of linked.links.slice(0, 5)) {
               if (llid === note.id) continue
-              const ln = await getNote(llid)
+              const ln = await ctx.getNote(llid)
               if (ln) linkedNotes.push({ id: ln.id, content: ln.content })
             }
             linkedNotes.push({ id: note.id, content }) // new note exactly once
@@ -313,10 +326,10 @@ export async function addMemory(content: string, agentId = 'main'): Promise<stri
                   note.links.push(targetId)
                   noteChanged = true
                 }
-                const target = await getNote(targetId)
+                const target = await ctx.getNote(targetId)
                 if (target && !target.links.includes(note.id)) {
                   target.links.push(note.id)
-                  await updateNote(target)
+                  await ctx.updateNote(target)
                 }
               }
               // 2. 更新新写入 memory 的 note.tags
@@ -346,7 +359,7 @@ export async function addMemory(content: string, agentId = 'main'): Promise<stri
               if (noteTagsChanged) {
                 note.embedding = await encode(buildEmbedText(note))
               }
-              await updateNote(note)
+              await ctx.updateNote(note)
             }
 
             if (evolved) {
@@ -354,7 +367,7 @@ export async function addMemory(content: string, agentId = 'main'): Promise<stri
               if (newTags !== null || newContext !== null) {
                 linked.embedding = await encode(buildEmbedText(linked))
               }
-              await updateNote(linked)
+              await ctx.updateNote(linked)
               console.log(`  evolved/strengthened note ${lid.slice(0, 8)}...`)
             }
           }
@@ -398,20 +411,23 @@ export async function searchMemory(
     bfsSimThreshold?: number
     // Story 26B: if set, only return knowledge notes that contain ALL of these topics
     topicsFilter?: string[]
+    // Story 32: optional storage context for mode B isolation
+    storageCtx?: StorageContext
   }
 ): Promise<SearchResult[]> {
   const useBfs = opts?.useBfs !== false // default true
   const bfsSimThreshold = opts?.bfsSimThreshold ?? 0.25 // Story 22 default
-  const total = await countNotes(agentId)
+  const ctx = opts?.storageCtx ?? defaultCtx()
+  const total = await ctx.countNotes(agentId)
   if (total === 0) return []
 
   // Embedding retrieval
   const queryEmbedding = await encode(query)
   const n = Math.min(Math.max(topK * 4, 20), total)
-  const embResults = await queryByEmbedding(queryEmbedding, n, agentId, 0.0)
+  const embResults = await ctx.queryByEmbedding(queryEmbedding, n, agentId, 0.0)
 
   // BM25 retrieval
-  const allNotes = await listNotes(agentId)
+  const allNotes = await ctx.listNotes(agentId)
   const bm25State = buildBM25(allNotes)
   const queryTokens = simpleTokenize(query)
   const bm25Ranked = bm25Score(bm25State, queryTokens).slice(0, n)
@@ -512,8 +528,9 @@ export async function searchMemory(
 }
 
 // ── listMemories ──────────────────────────────────────────────────────────────
-export async function listMemories(agentId = 'main'): Promise<{ count: number }> {
-  const count = await countNotes(agentId)
+export async function listMemories(agentId = 'main', storageCtx?: StorageContext): Promise<{ count: number }> {
+  const ctx = storageCtx ?? defaultCtx()
+  const count = await ctx.countNotes(agentId)
   return { count }
 }
 
@@ -531,10 +548,15 @@ function sleep(ms: number): Promise<void> {
  *
  * Story 30: pending_merge=true notes are routed through LLM evolution judgment
  * (EVOLVE/CONFLICT/EXPAND/NEW) instead of simple merge.
+ * Story 32: shared notes (agent_id='shared') are never merged/consolidated.
  */
-export async function mergeSimilarNotes(agentId: string): Promise<number> {
+export async function mergeSimilarNotes(agentId: string, storageCtx?: StorageContext): Promise<number> {
+  const ctx = storageCtx ?? defaultCtx()
   const today = new Date().toISOString().slice(0, 10) // "YYYY-MM-DD"
-  const notes = await getNotesByDatePrefix(today, agentId)
+  const allNotes = await ctx.getNotesByDatePrefix(today, agentId)
+
+  // Story 32: only process private notes — skip shared entries entirely
+  const notes = allNotes.filter((n) => n.agent_id !== 'shared')
 
   // ── Story 30: Evolution processing for pending_merge notes ────────────────
   const pendingNotes = notes.filter((n) => n.pending_merge === true)
@@ -556,7 +578,7 @@ export async function mergeSimilarNotes(agentId: string): Promise<number> {
     }
 
     if (!bestNeighbor) {
-      await patchNotePayload(pendingNote.id, { pending_merge: false })
+      await ctx.patchNotePayload(pendingNote.id, { pending_merge: false })
       continue
     }
 
@@ -579,16 +601,16 @@ export async function mergeSimilarNotes(agentId: string): Promise<number> {
       const mergedContent = judgment.mergedContent || pendingNote.content
       const newEmbedding = await encode(buildEmbedText({ ...bestNeighbor, content: mergedContent }))
       const newHash = createHash('md5').update(mergedContent).digest('hex')
-      await updateNoteContent(bestNeighbor.id, mergedContent, newEmbedding, newHash)
-      await patchNotePayload(bestNeighbor.id, {
+      await ctx.updateNoteContent(bestNeighbor.id, mergedContent, newEmbedding, newHash)
+      await ctx.patchNotePayload(bestNeighbor.id, {
         evolution_history: JSON.stringify(oldHistory),
         evolution_type: 'EVOLVE',
       })
-      await deleteNote(pendingNote.id)
+      await ctx.deleteNote(pendingNote.id)
       evolvedCount++
     } else if (judgment.type === 'CONFLICT') {
-      await patchNotePayload(pendingNote.id, { pending_merge: false, conflict: true, evolution_type: 'CONFLICT' })
-      await patchNotePayload(bestNeighbor.id, { conflict: true, evolution_type: 'CONFLICT' })
+      await ctx.patchNotePayload(pendingNote.id, { pending_merge: false, conflict: true, evolution_type: 'CONFLICT' })
+      await ctx.patchNotePayload(bestNeighbor.id, { conflict: true, evolution_type: 'CONFLICT' })
     } else if (judgment.type === 'EXPAND') {
       const oldHistory = bestNeighbor.evolution_history || []
       oldHistory.push({
@@ -603,16 +625,16 @@ export async function mergeSimilarNotes(agentId: string): Promise<number> {
       const mergedContent = judgment.mergedContent || `${bestNeighbor.content}；${pendingNote.content}`
       const newEmbedding = await encode(buildEmbedText({ ...bestNeighbor, content: mergedContent }))
       const newHash = createHash('md5').update(mergedContent).digest('hex')
-      await updateNoteContent(bestNeighbor.id, mergedContent, newEmbedding, newHash)
-      await patchNotePayload(bestNeighbor.id, {
+      await ctx.updateNoteContent(bestNeighbor.id, mergedContent, newEmbedding, newHash)
+      await ctx.patchNotePayload(bestNeighbor.id, {
         evolution_history: JSON.stringify(oldHistory),
         evolution_type: 'EXPAND',
       })
-      await deleteNote(pendingNote.id)
+      await ctx.deleteNote(pendingNote.id)
       evolvedCount++
     } else {
       // NEW — just clear pending_merge
-      await patchNotePayload(pendingNote.id, { pending_merge: false, evolution_type: 'NEW' })
+      await ctx.patchNotePayload(pendingNote.id, { pending_merge: false, evolution_type: 'NEW' })
     }
 
     await sleep(200)
@@ -670,8 +692,8 @@ export async function mergeSimilarNotes(agentId: string): Promise<number> {
 
       const newEmbedding = await encode(result.merged)
       const newHash = createHash('md5').update(result.merged).digest('hex')
-      await updateNoteContent(keepNote.id, result.merged, newEmbedding, newHash)
-      await deleteNote(dropNote.id)
+      await ctx.updateNoteContent(keepNote.id, result.merged, newEmbedding, newHash)
+      await ctx.deleteNote(dropNote.id)
       deletedIds.add(dropNote.id)
       mergedCount++
     }
@@ -686,8 +708,10 @@ export async function mergeSimilarNotes(agentId: string): Promise<number> {
 /**
  * Consolidate semantically similar memories.
  * Performs deep deduplication by category and similarity score.
+ * Story 32: shared notes (agent_id='shared') are skipped entirely.
  */
-export async function consolidateMemories(agentId: string, logger?: any): Promise<number> {
+export async function consolidateMemories(agentId: string, logger?: any, storageCtx?: StorageContext): Promise<number> {
+  const ctx = storageCtx ?? defaultCtx()
   const log = {
     info: (msg: string) => (logger ? logger.info(msg) : console.log(msg)),
     warn: (msg: string) => (logger ? logger.warn(msg) : console.warn(msg)),
@@ -697,8 +721,12 @@ export async function consolidateMemories(agentId: string, logger?: any): Promis
   log.info(`[Consolidation] Starting consolidation for agentId: ${agentId}`)
 
   // 1. 加载记忆：获取所有活动（is_active: true）记忆条目
-  const allNotes = await listNotes(agentId)
-  log.info(`[Consolidation] Loaded ${allNotes.length} active notes.`)
+  const rawNotes = await ctx.listNotes(agentId)
+  // Story 32: skip shared notes — they are read-only for non-owners
+  const allNotes = rawNotes.filter((n) => n.agent_id !== 'shared')
+  log.info(
+    `[Consolidation] Loaded ${allNotes.length} active private notes (${rawNotes.length - allNotes.length} shared skipped).`
+  )
 
   // 2. 分类分组：根据 category 字段将记忆分组
   // Story 26A: skip knowledge notes — they are durable and should not be merged
@@ -829,13 +857,13 @@ export async function consolidateMemories(agentId: string, logger?: any): Promis
       })
 
       // 更新 KeepNote
-      await updateNote(keepNote)
+      await ctx.updateNote(keepNote)
 
       // 软删除 DropNote
-      await invalidateNote(dropNote.id)
+      await ctx.invalidateNote(dropNote.id)
 
       // 级联更新 links
-      await replaceLinkReferences(dropNote.id, keepNote.id, agentId)
+      await ctx.replaceLinkReferences(dropNote.id, keepNote.id, agentId)
 
       // 写入日志
       logMergeToFile(keepNote.id, dropNote.id, keepNote.content)
