@@ -42,6 +42,7 @@ Final Score = RRF Score × (1 + 0.05 × ln(1 + retrieval_count) / (age_days + 1)
 *   🛡️ **Strict Quality Controls** — Full Vitest test coverage for embeddings, storage, link-cascading consolidation, tokenization, and BFS gate behavior, integrated into ESLint + Prettier + import boundary CI checks running on GitHub Actions.
 *   📊 **Quality Scoring & Auto-Review** — Write-time quality gate rejects content under 10 characters and marks temporal/ephemeral content (containing signal words like '待跑', '等确认'). The `memory_quality_scan` tool scans the full memory store, identifies low-quality entries (too short, expired ephemeral >7 days, unresolved conflicts), and generates Obsidian-compatible review batch files for human curation.
 *   🔐 **Per-Agent Memory Isolation** — Each agent operates in its own private memory namespace. Memories written by `main` are invisible to `dev` by default. A `shared` scope lets the writing agent publish memories readable by all agents, with explicit `owner`/`readers`/`writers` access fields on every note. Two modes: Mode A (shared Qdrant collection, filtered by `agent_id`) and Mode B (dedicated collection per agent, full physical isolation).
+*   🔔 **Hook Self-Check** — If the `agent_end` hook has never fired within 10 minutes of startup (likely blocked by OpenClaw's security policy), the plugin logs a warning and appends a visible notice to every `memory_search` result so you know automatic write-back is disabled.
 
 ---
 
@@ -244,6 +245,7 @@ openclaw gateway restart
 | `agentId` | `string` | `"main"` | Agent namespace for memory isolation |
 | `topK` | `number` | `5` | Maximum memories to retrieve during search |
 | `agents` | `Record<string, {agentId?, collection?}>` | `{}` | Per-agent overrides. Set `collection` for Mode B physical isolation. |
+| `hooks.allowConversationAccess` | `boolean` | `false` | **Required** for automatic memory write-back. Must be set explicitly in `plugins.entries.openclaw-amem.hooks`; without it, the `agent_end` hook is silently blocked by OpenClaw's security policy. |
 
 ---
 
@@ -308,6 +310,8 @@ Test coverage includes:
 | `test/quality-test.ts` | Quality gate: short text rejection, ephemeral marking, scan identification |
 | `test/evolution-test.ts` | Evolution mechanism: EVOLVE/CONFLICT/EXPAND/NEW paths (standalone) |
 | `test/agent-isolation.test.ts` | Story 32: per-agent private/shared isolation, cross-agent consolidation safety, shared note field correctness |
+
+> **Note:** Story 34 has no new test file (self-check logic is timing-based, not unit-testable in isolation)
 
 ---
 
