@@ -26,6 +26,28 @@
         "type": "string",
         "default": "main",
         "description": "Agent namespace for memory isolation."
+      },
+      "collection": {
+        "type": "string",
+        "description": "Qdrant collection name (mode A shared default)."
+      },
+      "agents": {
+        "type": "object",
+        "description": "Per-agent overrides keyed by agentId.",
+        "additionalProperties": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "agentId": {
+              "type": "string",
+              "description": "Override the effective agentId namespace."
+            },
+            "collection": {
+              "type": "string",
+              "description": "Dedicated collection → mode B isolation."
+            }
+          }
+        }
       }
     },
     "required": []
