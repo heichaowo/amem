@@ -13,13 +13,19 @@ import * as os from 'os'
 import * as path from 'path'
 import { definePluginEntry } from 'openclaw/plugin-sdk/plugin-entry'
 import { addMemory, searchMemory, listMemories, mergeSimilarNotes, consolidateMemories } from './memory.js'
-import { ensureCollection, createStorageContext, type AmemPluginConfig } from './storage.js'
+import { ensureCollection, createStorageContext, type AmemPluginConfig, type StorageContext } from './storage.js'
 import { encode } from './embedding.js'
 import { createHash } from 'crypto'
 import { generateReviewBatch } from './quality.js'
 
 // ── Config ────────────────────────────────────────────────────────────────────
 let _config: Record<string, unknown> = {}
+
+/** Per-call context carrying the runtime per-session agent identity. */
+interface AgentCtx {
+  agentId?: string
+  sessionKey?: string
+}
 
 // ── OpenClaw plugin registration ──────────────────────────────────────────────
 function register(api: {
@@ -35,37 +41,50 @@ function register(api: {
   _config = (api.pluginConfig as Record<string, unknown>) || {}
   const pluginConfig = _config as AmemPluginConfig
 
-  // ── Story 32: Per-agent config resolution ────────────────────────────────────
-  // Priority: api.agentId (runtime) > pluginConfig.agentId (static) > 'main'
-  let currentAgentId: string
-  if (api.agentId) {
-    currentAgentId = api.agentId
-  } else if (pluginConfig.agentId) {
-    logger.warn(
-      `openclaw-amem: api.agentId not available, falling back to pluginConfig.agentId="${pluginConfig.agentId}"`
-    )
-    currentAgentId = pluginConfig.agentId
-  } else {
-    currentAgentId = 'main'
+  // ── Story 32 (Issue 1): per-agent scope resolved PER CALL, not at register ────
+  // The runtime per-session agentId is only present on each interface's ctx — it
+  // does NOT exist on `api` at register time. Resolve it from each call's ctx:
+  //   ctx.agentId → parse ctx.sessionKey ("agent:<AGENTID>:<REST>") → pluginConfig.agentId → 'main'
+  function parseAgentIdFromSessionKey(sessionKey?: string): string | undefined {
+    if (!sessionKey) return undefined
+    const parts = sessionKey.split(':').filter(Boolean)
+    if (parts.length >= 3 && parts[0] === 'agent') return parts[1] || undefined
+    return undefined
+  }
+  function resolveAgentId(ctx?: AgentCtx): string {
+    return ctx?.agentId ?? parseAgentIdFromSessionKey(ctx?.sessionKey) ?? pluginConfig.agentId ?? 'main'
   }
 
-  const agentCfg = pluginConfig.agents?.[currentAgentId] ?? {}
-  const effectiveAgentId = agentCfg.agentId ?? currentAgentId
-  const effectiveCollection = agentCfg.collection ?? pluginConfig.collection ?? undefined
+  // Per-agent config + storage context, built on demand for the resolved agentId.
+  interface AgentScope {
+    agentId: string
+    collection?: string
+    storageCtx: StorageContext
+  }
+  function buildScope(rawAgentId: string): AgentScope {
+    const agentCfg = pluginConfig.agents?.[rawAgentId] ?? {}
+    const effectiveAgentId = agentCfg.agentId ?? rawAgentId
+    const effectiveCollection = agentCfg.collection ?? pluginConfig.collection ?? undefined
+    // Mode B: agent has its own dedicated collection → skip the shared-agent filter.
+    const modeBIsolated = !!agentCfg.collection
+    return {
+      agentId: effectiveAgentId,
+      collection: effectiveCollection,
+      storageCtx: createStorageContext(effectiveCollection, modeBIsolated),
+    }
+  }
 
-  // Mode B: agent has its own collection
-  const modeBIsolated = !!agentCfg.collection
-  const storageCtx = createStorageContext(effectiveCollection, modeBIsolated)
-
-  const agentId = effectiveAgentId
+  // Background tasks (daily consolidation, service lifecycle) have no per-session
+  // ctx — they run on the default agent scope (preserves pre-Story-32 behavior).
+  const defaultScope = buildScope(resolveAgentId())
   const dbPath = path.join(os.homedir(), '.openclaw', 'amem_db')
 
   logger.info(
-    `openclaw-amem: registered (native TS, Qdrant, agent_id=${agentId}, collection=${effectiveCollection ?? 'amem_notes (default)'}, mode=${modeBIsolated ? 'B-isolated' : 'A-shared'})`
+    `openclaw-amem: registered (native TS, Qdrant, default agent_id=${defaultScope.agentId}, default collection=${pluginConfig.collection ?? 'amem_notes (default)'}, per-agent scope resolved per call)`
   )
 
-  // Pre-warm: ensure Qdrant collection exists
-  ensureCollection(effectiveCollection).catch((e) =>
+  // Pre-warm: ensure the default Qdrant collection exists
+  ensureCollection(pluginConfig.collection).catch((e) =>
     logger.warn(`openclaw-amem: ensureCollection failed — ${e.message}`)
   )
 
@@ -81,8 +100,9 @@ function register(api: {
         },
       },
       runtime: {
-        async getMemorySearchManager(_params: unknown) {
+        async getMemorySearchManager(params: AgentCtx) {
           try {
+            const scope = buildScope(resolveAgentId(params))
             return {
               manager: {
                 status() {
@@ -97,7 +117,7 @@ function register(api: {
                 async search(query: string, opts: { limit?: number; topK?: number } = {}) {
                   try {
                     const topK = opts.limit || opts.topK || 5
-                    const results = await searchMemory(query, topK, agentId, { storageCtx })
+                    const results = await searchMemory(query, topK, scope.agentId, { storageCtx: scope.storageCtx })
                     return results.map((r) => ({
                       id: r.id,
                       memory: r.content,
@@ -112,7 +132,7 @@ function register(api: {
                 },
                 async add(text: string) {
                   try {
-                    await addMemory(text, agentId, { storageCtx })
+                    await addMemory(text, scope.agentId, { storageCtx: scope.storageCtx })
                     return { ok: true }
                   } catch (err) {
                     logger.warn(`openclaw-amem: add failed — ${(err as Error).message}`)
@@ -130,8 +150,9 @@ function register(api: {
             return { manager: null, error: `amem backend unavailable: ${String(err)}` }
           }
         },
-        resolveMemoryBackendConfig(_params: unknown) {
-          return { backend: 'amem-qdrant', baseUrl: '', userId: agentId }
+        resolveMemoryBackendConfig(params: AgentCtx) {
+          const scope = buildScope(resolveAgentId(params))
+          return { backend: 'amem-qdrant', baseUrl: '', userId: scope.agentId }
         },
         async closeAllMemorySearchManagers() {},
       },
@@ -143,191 +164,209 @@ function register(api: {
   // ── registerTool: memory_search ──────────────────────────────────────────
   if (typeof api.registerTool === 'function') {
     api.registerTool(
-      {
-        name: 'memory_search',
-        label: 'Memory Search (A-MEM)',
-        description: 'Search long-term memories stored in A-MEM / Qdrant.',
-        parameters: {
-          type: 'object',
-          properties: {
-            query: { type: 'string', description: 'Search query' },
-            limit: { type: 'number', description: 'Max results (default: 5)' },
-            topicsFilter: {
-              type: 'array',
-              items: { type: 'string' },
-              description: 'Story 26B: filter knowledge notes by topics (all must match)',
+      (ctx: AgentCtx) => {
+        const scope = buildScope(resolveAgentId(ctx))
+        return {
+          name: 'memory_search',
+          label: 'Memory Search (A-MEM)',
+          description: 'Search long-term memories stored in A-MEM / Qdrant.',
+          parameters: {
+            type: 'object',
+            properties: {
+              query: { type: 'string', description: 'Search query' },
+              limit: { type: 'number', description: 'Max results (default: 5)' },
+              topicsFilter: {
+                type: 'array',
+                items: { type: 'string' },
+                description: 'Story 26B: filter knowledge notes by topics (all must match)',
+              },
             },
+            required: ['query'],
           },
-          required: ['query'],
-        },
-        async execute(_toolCallId: string, params: { query: string; limit?: number; topicsFilter?: string[] }) {
-          const { query, limit = 5, topicsFilter } = params
-          const start = Date.now()
-          // Story 34: warn if agent_end hook never fired (likely blocked)
-          const pluginUptime = Date.now() - pluginStartTime
-          const hookWarning =
-            !hookEverFired && pluginUptime > 10 * 60 * 1000
-              ? '\n\n⚠️ Warning: agent_end hook has never fired. Automatic memory write-back may be disabled. ' +
-                'Set plugins.entries.openclaw-amem.hooks.allowConversationAccess=true in openclaw.json.'
-              : ''
-          try {
-            const results = await searchMemory(query, limit, agentId, { topicsFilter, storageCtx })
-            logger.info(`openclaw-amem: memory_search "${query}" → ${results.length} results (${Date.now() - start}ms)`)
-            if (!results.length) {
+          async execute(_toolCallId: string, params: { query: string; limit?: number; topicsFilter?: string[] }) {
+            const { query, limit = 5, topicsFilter } = params
+            const start = Date.now()
+            // Story 34: warn if agent_end hook never fired (likely blocked)
+            const pluginUptime = Date.now() - pluginStartTime
+            const hookWarning =
+              !hookEverFired && pluginUptime > 10 * 60 * 1000
+                ? '\n\n⚠️ Warning: agent_end hook has never fired. Automatic memory write-back may be disabled. ' +
+                  'Set plugins.entries.openclaw-amem.hooks.allowConversationAccess=true in openclaw.json.'
+                : ''
+            try {
+              const results = await searchMemory(query, limit, scope.agentId, {
+                topicsFilter,
+                storageCtx: scope.storageCtx,
+              })
+              logger.info(`openclaw-amem: memory_search "${query}" → ${results.length} results (${Date.now() - start}ms)`)
+              if (!results.length) {
+                return {
+                  content: [{ type: 'text', text: 'No relevant memories found.' + hookWarning }],
+                  details: { count: 0 },
+                }
+              }
+              const text = results
+                .map((r, i) => `${i + 1}. ${r.content} (score: ${(r.similarity * 100).toFixed(0)}%, id: ${r.id})`)
+                .join('\n')
               return {
-                content: [{ type: 'text', text: 'No relevant memories found.' + hookWarning }],
-                details: { count: 0 },
+                content: [{ type: 'text', text: `Found ${results.length} memories:\n\n${text}${hookWarning}` }],
+                details: { count: results.length, memories: results },
+              }
+            } catch (err) {
+              logger.warn(`openclaw-amem: memory_search error — ${(err as Error).message}`)
+              return {
+                content: [{ type: 'text', text: `Memory search failed: ${(err as Error).message}` }],
+                details: { error: String(err) },
               }
             }
-            const text = results
-              .map((r, i) => `${i + 1}. ${r.content} (score: ${(r.similarity * 100).toFixed(0)}%, id: ${r.id})`)
-              .join('\n')
-            return {
-              content: [{ type: 'text', text: `Found ${results.length} memories:\n\n${text}${hookWarning}` }],
-              details: { count: results.length, memories: results },
-            }
-          } catch (err) {
-            logger.warn(`openclaw-amem: memory_search error — ${(err as Error).message}`)
-            return {
-              content: [{ type: 'text', text: `Memory search failed: ${(err as Error).message}` }],
-              details: { error: String(err) },
-            }
-          }
-        },
+          },
+        }
       },
       { optional: false }
     )
 
     // ── registerTool: memory_add ─────────────────────────────────────────────
     api.registerTool(
-      {
-        name: 'memory_add',
-        label: 'Memory Add (A-MEM)',
-        description: 'Save important information into long-term A-MEM memory.',
-        parameters: {
-          type: 'object',
-          properties: {
-            text: { type: 'string', description: 'Fact or information to remember' },
+      (ctx: AgentCtx) => {
+        const scope = buildScope(resolveAgentId(ctx))
+        return {
+          name: 'memory_add',
+          label: 'Memory Add (A-MEM)',
+          description: 'Save important information into long-term A-MEM memory.',
+          parameters: {
+            type: 'object',
+            properties: {
+              text: { type: 'string', description: 'Fact or information to remember' },
+            },
+            required: ['text'],
           },
-          required: ['text'],
-        },
-        async execute(_toolCallId: string, params: { text: string }) {
-          const { text } = params
-          const start = Date.now()
-          try {
-            const id = await addMemory(text, agentId, { storageCtx })
-            logger.info(`openclaw-amem: memory_add OK id=${id} (${Date.now() - start}ms)`)
-            return {
-              content: [{ type: 'text', text: 'Memory saved successfully.' }],
-              details: { ok: true, id },
+          async execute(_toolCallId: string, params: { text: string }) {
+            const { text } = params
+            const start = Date.now()
+            try {
+              const id = await addMemory(text, scope.agentId, { storageCtx: scope.storageCtx })
+              logger.info(`openclaw-amem: memory_add OK id=${id} (${Date.now() - start}ms)`)
+              return {
+                content: [{ type: 'text', text: 'Memory saved successfully.' }],
+                details: { ok: true, id },
+              }
+            } catch (err) {
+              logger.warn(`openclaw-amem: memory_add error — ${(err as Error).message}`)
+              return {
+                content: [{ type: 'text', text: `Memory add failed: ${(err as Error).message}` }],
+                details: { ok: false, error: String(err) },
+              }
             }
-          } catch (err) {
-            logger.warn(`openclaw-amem: memory_add error — ${(err as Error).message}`)
-            return {
-              content: [{ type: 'text', text: `Memory add failed: ${(err as Error).message}` }],
-              details: { ok: false, error: String(err) },
-            }
-          }
-        },
+          },
+        }
       },
       { optional: false }
     )
 
     // ── registerTool: memory_list ─────────────────────────────────────────────
     api.registerTool(
-      {
-        name: 'memory_list',
-        label: 'Memory List (A-MEM)',
-        description: 'Show total memory count in A-MEM.',
-        parameters: {
-          type: 'object',
-          properties: {},
-          required: [],
-        },
-        async execute(_toolCallId: string, _params: Record<string, never>) {
-          try {
-            const { count } = await listMemories(agentId, storageCtx)
-            return {
-              content: [{ type: 'text', text: `Total memories: ${count}` }],
-              details: { count },
+      (ctx: AgentCtx) => {
+        const scope = buildScope(resolveAgentId(ctx))
+        return {
+          name: 'memory_list',
+          label: 'Memory List (A-MEM)',
+          description: 'Show total memory count in A-MEM.',
+          parameters: {
+            type: 'object',
+            properties: {},
+            required: [],
+          },
+          async execute(_toolCallId: string, _params: Record<string, never>) {
+            try {
+              const { count } = await listMemories(scope.agentId, scope.storageCtx)
+              return {
+                content: [{ type: 'text', text: `Total memories: ${count}` }],
+                details: { count },
+              }
+            } catch (err) {
+              return {
+                content: [{ type: 'text', text: `Memory list failed: ${(err as Error).message}` }],
+                details: { error: String(err) },
+              }
             }
-          } catch (err) {
-            return {
-              content: [{ type: 'text', text: `Memory list failed: ${(err as Error).message}` }],
-              details: { error: String(err) },
-            }
-          }
-        },
+          },
+        }
       },
       { optional: true }
     )
 
     // ── registerTool: memory_consolidate ──────────────────────────────────────
     api.registerTool(
-      {
-        name: 'memory_consolidate',
-        label: 'Memory Consolidate (A-MEM)',
-        description: 'Trigger daily consolidation to merge semantic duplicates.',
-        parameters: {
-          type: 'object',
-          properties: {},
-          required: [],
-        },
-        async execute(_toolCallId: string, _params: Record<string, never>) {
-          const start = Date.now()
-          try {
-            const merged = await consolidateMemories(agentId, logger, storageCtx)
-            logger.info(`openclaw-amem: memory_consolidate OK merged=${merged} (${Date.now() - start}ms)`)
-            return {
-              content: [{ type: 'text', text: `Consolidation completed. Merged ${merged} memory pairs.` }],
-              details: { ok: true, mergedCount: merged },
+      (ctx: AgentCtx) => {
+        const scope = buildScope(resolveAgentId(ctx))
+        return {
+          name: 'memory_consolidate',
+          label: 'Memory Consolidate (A-MEM)',
+          description: 'Trigger daily consolidation to merge semantic duplicates.',
+          parameters: {
+            type: 'object',
+            properties: {},
+            required: [],
+          },
+          async execute(_toolCallId: string, _params: Record<string, never>) {
+            const start = Date.now()
+            try {
+              const merged = await consolidateMemories(scope.agentId, logger, scope.storageCtx)
+              logger.info(`openclaw-amem: memory_consolidate OK merged=${merged} (${Date.now() - start}ms)`)
+              return {
+                content: [{ type: 'text', text: `Consolidation completed. Merged ${merged} memory pairs.` }],
+                details: { ok: true, mergedCount: merged },
+              }
+            } catch (err) {
+              logger.warn(`openclaw-amem: memory_consolidate failed — ${(err as Error).message}`)
+              return {
+                content: [{ type: 'text', text: `Consolidation failed: ${(err as Error).message}` }],
+                details: { ok: false, error: String(err) },
+              }
             }
-          } catch (err) {
-            logger.warn(`openclaw-amem: memory_consolidate failed — ${(err as Error).message}`)
-            return {
-              content: [{ type: 'text', text: `Consolidation failed: ${(err as Error).message}` }],
-              details: { ok: false, error: String(err) },
-            }
-          }
-        },
+          },
+        }
       },
       { optional: true }
     )
 
     // ── registerTool: memory_quality_scan ────────────────────────────────────
     api.registerTool(
-      {
-        name: 'memory_quality_scan',
-        label: 'Memory Quality Scan (A-MEM)',
-        description:
-          'Scan all memories for quality issues (too short, expired ephemeral, conflicts) and generate a review batch file.',
-        parameters: {
-          type: 'object',
-          properties: {
-            outputPath: {
-              type: 'string',
-              description: 'Custom output path for the review batch file (optional, auto-generates if omitted)',
+      (ctx: AgentCtx) => {
+        const scope = buildScope(resolveAgentId(ctx))
+        return {
+          name: 'memory_quality_scan',
+          label: 'Memory Quality Scan (A-MEM)',
+          description:
+            'Scan all memories for quality issues (too short, expired ephemeral, conflicts) and generate a review batch file.',
+          parameters: {
+            type: 'object',
+            properties: {
+              outputPath: {
+                type: 'string',
+                description: 'Custom output path for the review batch file (optional, auto-generates if omitted)',
+              },
             },
+            required: [],
           },
-          required: [],
-        },
-        async execute(_toolCallId: string, params: { outputPath?: string }) {
-          const start = Date.now()
-          try {
-            const filePath = await generateReviewBatch(agentId, params.outputPath)
-            logger.info(`openclaw-amem: memory_quality_scan OK path=${filePath} (${Date.now() - start}ms)`)
-            return {
-              content: [{ type: 'text', text: `Quality scan complete. Review batch saved to: ${filePath}` }],
-              details: { ok: true, path: filePath },
+          async execute(_toolCallId: string, params: { outputPath?: string }) {
+            const start = Date.now()
+            try {
+              const filePath = await generateReviewBatch(scope.agentId, params.outputPath)
+              logger.info(`openclaw-amem: memory_quality_scan OK path=${filePath} (${Date.now() - start}ms)`)
+              return {
+                content: [{ type: 'text', text: `Quality scan complete. Review batch saved to: ${filePath}` }],
+                details: { ok: true, path: filePath },
+              }
+            } catch (err) {
+              logger.warn(`openclaw-amem: memory_quality_scan failed — ${(err as Error).message}`)
+              return {
+                content: [{ type: 'text', text: `Quality scan failed: ${(err as Error).message}` }],
+                details: { ok: false, error: String(err) },
+              }
             }
-          } catch (err) {
-            logger.warn(`openclaw-amem: memory_quality_scan failed — ${(err as Error).message}`)
-            return {
-              content: [{ type: 'text', text: `Quality scan failed: ${(err as Error).message}` }],
-              details: { ok: false, error: String(err) },
-            }
-          }
-        },
+          },
+        }
       },
       { optional: true }
     )
@@ -346,13 +385,20 @@ function register(api: {
     const hookFn = (typeof (api as any).on === 'function' ? (api as any).on : (api as any).registerHook).bind(api)
     hookFn(
       'agent_end',
-      async (event: {
-        messages?: Array<{ role: string; content: string | Array<{ type: string; text?: string }> }>
-        success?: boolean
-      }) => {
+      async (
+        event: {
+          messages?: Array<{ role: string; content: string | Array<{ type: string; text?: string }> }>
+          success?: boolean
+        },
+        ctx?: AgentCtx
+      ) => {
         hookEverFired = true
+        // Story 32 (Issue 1): resolve the per-session agent scope from the hook ctx.
+        const scope = buildScope(resolveAgentId(ctx))
+        const agentId = scope.agentId
+        const storageCtx = scope.storageCtx
         logger.info(
-          `openclaw-amem: agent_end hook triggered (success=${event.success}, messages=${event.messages?.length ?? 0})`
+          `openclaw-amem: agent_end hook triggered (agent_id=${agentId}, success=${event.success}, messages=${event.messages?.length ?? 0})`
         )
         try {
           if (!event.success) {
@@ -486,7 +532,8 @@ function register(api: {
     setTimeout(async () => {
       try {
         logger.info('openclaw-amem: Running scheduled daily consolidation...')
-        const merged = await consolidateMemories(agentId, logger, storageCtx)
+        // Background task — no per-session ctx, operate on the default agent scope.
+        const merged = await consolidateMemories(defaultScope.agentId, logger, defaultScope.storageCtx)
         if (merged > 0) {
           logger.info(`openclaw-amem: Scheduled daily consolidation merged ${merged} pairs.`)
         }
@@ -503,14 +550,14 @@ function register(api: {
     api.registerService({
       id: 'amem-plugin',
       start() {
-        logger.info(`openclaw-amem: started (backend: amem-qdrant, agentId: ${agentId})`)
+        logger.info(`openclaw-amem: started (backend: amem-qdrant, default agentId: ${defaultScope.agentId})`)
       },
       stop() {
         logger.info('openclaw-amem: stopped')
       },
     })
   } else {
-    logger.info(`openclaw-amem: initialized (backend: amem-qdrant, agentId: ${agentId})`)
+    logger.info(`openclaw-amem: initialized (backend: amem-qdrant, default agentId: ${defaultScope.agentId})`)
   }
 }
 
