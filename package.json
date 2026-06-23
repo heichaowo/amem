@@ -6,7 +6,13 @@
   "openclaw": {
     "extensions": [
       "./dist/index.js"
-    ]
+    ],
+    "compat": {
+      "pluginApi": "1"
+    },
+    "build": {
+      "openclawVersion": "2026.6.9"
+    }
   },
   "scripts": {
     "build": "tsup src/index.ts --format cjs --out-dir dist",
