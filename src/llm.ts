@@ -232,7 +232,7 @@ ${memoryList}
 每次最多返回 3 条操作。如果没有值得操作的内容，返回 []。
 
 只返回 JSON 数组，不要任何其他文字。示例：
-[{"action": "NEW", "fact": "Alex决定使用 React 作为前端框架", "reason": "明确的技术选型决策"}]`
+[{"action": "NEW", "fact": "Alex 决定使用 React 作为前端框架", "reason": "明确的技术选型决策"}]`
 
   try {
     const raw = await llmCall(prompt, 400)
