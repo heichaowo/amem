@@ -197,7 +197,10 @@ Consolidation runs per-agent scope: `dev`'s consolidation never touches `main`'s
 ### 1. Install the plugin
 
 ```bash
-# From npm (recommended)
+# From ClawHub (recommended)
+openclaw plugins install clawhub:@heichaowo/openclaw-amem
+
+# From npm
 openclaw plugins install openclaw-amem
 
 # From git
