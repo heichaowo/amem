@@ -3,3 +3,8 @@ node_modules/
 docs/backups/
 
 website/.vitepress/dist
+
+# Local operational scripts (may contain personal data)
+scripts/
+# Integration test files (require live Qdrant, not for public CI)
+test/
