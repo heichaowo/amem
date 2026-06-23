@@ -8,3 +8,6 @@ website/.vitepress/dist
 scripts/
 # Integration test files (require live Qdrant, not for public CI)
 test/
+
+dist/
+docs/
