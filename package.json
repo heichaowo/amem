@@ -46,5 +46,25 @@
   "optionalDependencies": {
     "@node-rs/jieba-darwin-arm64": "^2.0.1",
     "@node-rs/jieba-linux-x64-gnu": "^2.0.1"
-  }
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/heichaowo/openclaw-amem.git"
+  },
+  "homepage": "https://amem.owo.lc",
+  "bugs": {
+    "url": "https://github.com/heichaowo/openclaw-amem/issues"
+  },
+  "keywords": [
+    "openclaw",
+    "openclaw-plugin",
+    "a-mem",
+    "agent-memory",
+    "agentic-memory",
+    "memory-plugin",
+    "qdrant",
+    "vector-memory",
+    "llm-memory",
+    "transformers"
+  ]
 }
