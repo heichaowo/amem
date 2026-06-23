@@ -103,7 +103,7 @@ When new memories are borderline-similar to existing ones (cosine similarity 0.7
 |------|---------|--------|
 | **EVOLVE** | New info deepens/updates the old memory (e.g. "wants to buy Model 3" → "decided on standard RWD Model 3") | Old note content updated, `evolution_history` appended, new note absorbed |
 | **CONFLICT** | Old and new info contradict each other (e.g. "lives in Riverstone" vs "moved to Eastholm") | Both notes kept, both marked `conflict: true` |
-| **EXPAND** | New info complements the old memory (e.g. "has a sister" + "sister works in education in Northvale") | Content merged into old note, `evolution_history` appended, new note absorbed |
+| **EXPAND** | New info complements the old memory (e.g. "has a sister" + "sister works in finance in Northvale") | Content merged into old note, `evolution_history` appended, new note absorbed |
 | **NEW** | Unrelated information, no real connection | Both notes kept as-is |
 
 This is the key differentiator from mem0-style flat memory systems: memories **evolve** rather than being silently overwritten. The `evolution_history` field provides a full audit trail of how each memory changed over time.
