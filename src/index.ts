@@ -198,7 +198,9 @@ function register(api: {
                 topicsFilter,
                 storageCtx: scope.storageCtx,
               })
-              logger.info(`openclaw-amem: memory_search "${query}" → ${results.length} results (${Date.now() - start}ms)`)
+              logger.info(
+                `openclaw-amem: memory_search "${query}" → ${results.length} results (${Date.now() - start}ms)`
+              )
               if (!results.length) {
                 return {
                   content: [{ type: 'text', text: 'No relevant memories found.' + hookWarning }],
