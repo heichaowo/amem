@@ -2,8 +2,16 @@
   "id": "openclaw-amem",
   "name": "Memory (A-MEM v2)",
   "description": "A-MEM agentic memory backend for OpenClaw — Qdrant + Transformers.js, no Python required. Note construction, link generation, memory evolution.",
-  "version": "0.4.1",
+  "version": "0.5.2",
   "kind": "memory",
+  "openclaw": {
+    "compat": {
+      "pluginApi": "1"
+    },
+    "build": {
+      "openclawVersion": "2026.6.9"
+    }
+  },
   "contracts": {
     "tools": [
       "memory_search",
