@@ -1,22 +1,38 @@
+# ── Dependencies ──────────────────────────────────────────────────────────────
 node_modules/
-*.js.map
-docs/backups/
 
-website/.vitepress/dist
-
-# Local operational scripts (may contain personal data)
-scripts/
-# Integration test files (require live Qdrant, not for public CI)
-test/
-
+# ── Build output ──────────────────────────────────────────────────────────────
 dist/
-docs/
-_bmad-output/
-_bmad/
-.agent/
+*.js.map
 
-# Prevent accidental secrets / internal docs
-.env*
-*.plist
+# ── Documentation site ────────────────────────────────────────────────────────
+website/.vitepress/dist
+website/.vitepress/cache
+
+# ── Secrets & environment ────────────────────────────────────────────────────
+.env
+.env.*
+
+# ── OS / editor ──────────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# ── Agent / BMad tooling (local only) ────────────────────────────────────────
+.agent/
+_bmad/
+_bmad-output/
+
+# ── Directories purged from history (guard against re-creation) ──────────────
+scripts/
+test/
+docs/
+
+# ── Files that should never be committed ─────────────────────────────────────
+acceptance-test.ts
 DEV_STORY*.md
+*.plist
 .git-backup/

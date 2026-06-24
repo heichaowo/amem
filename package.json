@@ -17,14 +17,12 @@
   "scripts": {
     "build": "tsup src/index.ts --format cjs --out-dir dist",
     "dev": "tsup src/index.ts --format cjs --watch",
-    "consolidate": "tsx scripts/consolidate-memories.ts",
     "lint": "eslint src",
-    "format": "prettier --check \"src/**/*.ts\" \"scripts/**/*.ts\"",
-    "format:fix": "prettier --write \"src/**/*.ts\" \"scripts/**/*.ts\"",
-    "check:boundaries": "tsx scripts/check-boundaries.ts",
+    "format": "prettier --check \"src/**/*.ts\"",
+    "format:fix": "prettier --write \"src/**/*.ts\"",
     "test": "vitest run",
     "test:watch": "vitest",
-    "check": "npm run format && npm run lint && npm run check:boundaries && npm run test",
+    "check": "npm run format && npm run lint && npm run test",
     "docs:dev": "vitepress dev website",
     "docs:build": "vitepress build website",
     "docs:preview": "vitepress preview website"

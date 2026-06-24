@@ -30,9 +30,6 @@ jobs:
       - name: Run ESLint check
         run: npm run lint
 
-      - name: Run OpenClaw Boundary Check
-        run: npm run check:boundaries
-
       - name: Run Build
         run: npm run build
 
@@ -45,9 +42,6 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Checkout full history
         uses: actions/checkout@v4
         with:
           fetch-depth: 0

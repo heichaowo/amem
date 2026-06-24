@@ -188,7 +188,7 @@ Consolidation runs per-agent scope: `dev`'s consolidation never touches `main`'s
 *   OpenClaw v2026.4+
 *   Node.js 18+ (Node 24/26 fully supported)
 *   Qdrant running on `:6333`
-*   Anthropic-compatible LLM endpoint (configure via `AMEM_LLM_BASE_URL` and `AMEM_LLM_API_KEY` env vars)
+*   Anthropic API key (`ANTHROPIC_API_KEY` env var) — or set `AMEM_LLM_BASE_URL` for a compatible proxy
 
 ---
 
@@ -296,26 +296,11 @@ npm install
 npm run build              # Compile TS files to dist/
 npm run lint               # Lint code using ESLint (Flat Config)
 npm run format             # Check code formatting via Prettier
-npm run check:boundaries   # Run custom import boundary & absolute path auditor
 npm run test               # Run Vitest unit & integration tests
-npm run check              # Run entire validation suite (format + lint + boundaries + test)
+npm run check              # Run entire validation suite (format + lint + test)
 ```
 
-Test coverage includes:
-
-| Test File | What It Covers |
-|-----------|----------------|
-| `test/embedding.test.ts` | ONNX embedding shape & cosine similarity |
-| `test/storage.test.ts` | Qdrant note add / soft-delete (live integration) |
-| `test/memory.test.ts` | Consolidation & cascading link updates |
-| `test/tokenize.test.ts` | Jieba Chinese segmentation, mixed-language, edge cases |
-| `test/bfs-gate.test.ts` | BFS relevance gate: filter / admit / disable |
-| `test/heat-decay.test.ts` | Time-decay heat boost: fresh > stale ranking, decay magnitude |
-| `test/quality-test.ts` | Quality gate: short text rejection, ephemeral marking, scan identification |
-| `test/evolution-test.ts` | Evolution mechanism: EVOLVE/CONFLICT/EXPAND/NEW paths (standalone) |
-| `test/agent-isolation.test.ts` | Story 32: per-agent private/shared isolation, cross-agent consolidation safety, shared note field correctness |
-
-> **Note:** Story 34 has no new test file (self-check logic is timing-based, not unit-testable in isolation)
+Test coverage spans embedding, storage, memory operations, tokenization, BFS gate, heat decay, quality gate, evolution mechanism, and agent isolation.
 
 ---
 
