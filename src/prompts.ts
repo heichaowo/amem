@@ -25,13 +25,16 @@ export interface LocalePrompts {
 
 // ── Locale resolution ────────────────────────────────────────────────────────
 
-const LOCALE: PromptLocale =
-  (process.env.AMEM_PROMPT_LOCALE as PromptLocale) === 'zh' ? 'zh' : 'en'
+const LOCALE: PromptLocale = (process.env.AMEM_PROMPT_LOCALE as PromptLocale) === 'zh' ? 'zh' : 'en'
 
 // ── English templates ────────────────────────────────────────────────────────
 
 const en: LocalePrompts = {
-  crudDecision: (userText, assistantText, memoryList) => `You are a memory management agent. Analyze the conversation and decide what memory operations are needed.
+  crudDecision: (
+    userText,
+    assistantText,
+    memoryList
+  ) => `You are a memory management agent. Analyze the conversation and decide what memory operations are needed.
 
 ## Conversation
 
@@ -71,7 +74,10 @@ Examples:
 3. Conversation is just "Sure, thanks" / "Got it" with no new info:
 []`,
 
-  shouldMerge: (contentA, contentB) => `You are a memory deduplication assistant. Determine whether two memories express essentially the same information.
+  shouldMerge: (
+    contentA,
+    contentB
+  ) => `You are a memory deduplication assistant. Determine whether two memories express essentially the same information.
 
 Memory A: ${contentA}
 Memory B: ${contentB}
@@ -96,7 +102,10 @@ A: "User prefers VS Code"
 B: "User's VS Code uses One Dark Pro theme"
 -> {"shouldMerge": false}`,
 
-  evolutionJudge: (oldContent, newContent) => `You are a memory evolution judge. Analyze the relationship between an old and new memory and return JSON.
+  evolutionJudge: (
+    oldContent,
+    newContent
+  ) => `You are a memory evolution judge. Analyze the relationship between an old and new memory and return JSON.
 
 Old memory: ${oldContent}
 New memory: ${newContent}

@@ -199,9 +199,7 @@ export async function llmCrudDecision(
   existingMemories: Array<{ idx: number; content: string }>
 ): Promise<MemoryOperation[]> {
   const memoryList =
-    existingMemories.length > 0
-      ? existingMemories.map((m) => `[${m.idx}] ${m.content}`).join('\n')
-      : '(none)'
+    existingMemories.length > 0 ? existingMemories.map((m) => `[${m.idx}] ${m.content}`).join('\n') : '(none)'
 
   const prompt = t.crudDecision(userText.slice(0, 500), assistantText.slice(0, 500), memoryList)
 
