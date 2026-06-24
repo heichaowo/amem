@@ -7,8 +7,7 @@ import * as path from 'path'
 import { listNotes, patchNotePayload, type MemoryNote } from './storage.js'
 import type { PromptLocale } from './prompts.js'
 
-const LOCALE: PromptLocale =
-  (process.env.AMEM_PROMPT_LOCALE as PromptLocale) === 'zh' ? 'zh' : 'en'
+const LOCALE: PromptLocale = (process.env.AMEM_PROMPT_LOCALE as PromptLocale) === 'zh' ? 'zh' : 'en'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -80,15 +79,21 @@ function nextBatchNumber(dir: string): number {
 function reasonLabel(r: LowQualityReason): string {
   if (LOCALE === 'zh') {
     switch (r) {
-      case 'too_short': return '内容过短（<10字）'
-      case 'expired_ephemeral': return '临时记忆已过期（>7天）'
-      case 'pending_conflict': return '存在冲突标记'
+      case 'too_short':
+        return '内容过短（<10字）'
+      case 'expired_ephemeral':
+        return '临时记忆已过期（>7天）'
+      case 'pending_conflict':
+        return '存在冲突标记'
     }
   }
   switch (r) {
-    case 'too_short': return 'Content too short (<10 chars)'
-    case 'expired_ephemeral': return 'Ephemeral memory expired (>7 days)'
-    case 'pending_conflict': return 'Pending conflict flag'
+    case 'too_short':
+      return 'Content too short (<10 chars)'
+    case 'expired_ephemeral':
+      return 'Ephemeral memory expired (>7 days)'
+    case 'pending_conflict':
+      return 'Pending conflict flag'
   }
 }
 
@@ -109,12 +114,11 @@ export async function generateReviewBatch(agentId: string, outputPath?: string):
 
   const title = LOCALE === 'zh' ? 'A-MEM 质量审核' : 'A-MEM Quality Review'
   const genLabel = LOCALE === 'zh' ? '生成时间' : 'Generated'
-  const countLabel = LOCALE === 'zh'
-    ? `共 ${items.length} 条低质量条目`
-    : `${items.length} low-quality item(s)`
-  const applyHint = LOCALE === 'zh'
-    ? '选好后可使用 memory_quality_apply 批量处理'
-    : 'Use memory_quality_apply to batch-process selected items'
+  const countLabel = LOCALE === 'zh' ? `共 ${items.length} 条低质量条目` : `${items.length} low-quality item(s)`
+  const applyHint =
+    LOCALE === 'zh'
+      ? '选好后可使用 memory_quality_apply 批量处理'
+      : 'Use memory_quality_apply to batch-process selected items'
 
   lines.push(`# ${title} — Batch ${batchN || 'custom'}`)
   lines.push('')
