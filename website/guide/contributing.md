@@ -20,14 +20,7 @@ npm run check              # Full suite (format + lint + test)
 
 ## Test coverage
 
-| Test File | What It Covers |
-|-----------|----------------|
-| `test/embedding.test.ts` | ONNX embedding shape & cosine similarity |
-| `test/storage.test.ts` | Qdrant note add / soft-delete (live integration) |
-| `test/memory.test.ts` | Consolidation & cascading link updates |
-| `test/tokenize.test.ts` | Jieba Chinese segmentation, mixed-language, edge cases |
-| `test/bfs-gate.test.ts` | BFS relevance gate: filter / admit / disable |
-| `test/heat-decay.test.ts` | Time-decay heat boost: fresh > stale ranking, decay magnitude |
+Test suite is under reconstruction. See [GitHub Issues](https://github.com/heichaowo/openclaw-amem/issues) for progress.
 
 ## Project structure
 

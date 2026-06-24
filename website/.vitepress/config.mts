@@ -1,5 +1,6 @@
 import { defineConfig } from 'vitepress'
 import { createRequire } from 'module'
+import llmstxt from 'vitepress-plugin-llms'
 
 const require = createRequire(import.meta.url)
 const pkg = require('../../package.json')
@@ -38,6 +39,7 @@ export default defineConfig({
           { text: 'How It Works', link: '/guide/how-it-works' },
           { text: 'A-MEM vs Traditional RAG', link: '/guide/comparison' },
           { text: 'Evolution & Quality', link: '/guide/evolution' },
+          { text: 'Agent Isolation', link: '/guide/agent-isolation' },
         ],
       },
       {
@@ -80,5 +82,9 @@ export default defineConfig({
       light: 'github-light',
       dark: 'github-dark',
     },
+  },
+
+  vite: {
+    plugins: [llmstxt()],
   },
 })

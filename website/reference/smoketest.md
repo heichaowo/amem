@@ -6,7 +6,7 @@ Internal regression test suite (`amem-smoketest`) — 31 QA pairs across 8 categ
 
 ---
 
-## Overall results (v0.3.0)
+## Overall results (last tested: v0.3.0)
 
 | Metric | Value |
 | :--- | :--- |
