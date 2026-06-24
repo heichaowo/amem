@@ -7,7 +7,7 @@
 | OpenClaw | v2026.4+ |
 | Node.js | 18+ (Node 24/26 fully supported) |
 | Qdrant | Running on `:6333` |
-| LLM Proxy | Anthropic-compatible on `:8080` |
+| LLM Endpoint | Anthropic-compatible (set `AMEM_LLM_BASE_URL`) |
 
 Qdrant can be started via Docker:
 

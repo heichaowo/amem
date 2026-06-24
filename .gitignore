@@ -11,3 +11,12 @@ test/
 
 dist/
 docs/
+_bmad-output/
+_bmad/
+.agent/
+
+# Prevent accidental secrets / internal docs
+.env*
+*.plist
+DEV_STORY*.md
+.git-backup/

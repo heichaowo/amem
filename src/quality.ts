@@ -54,14 +54,7 @@ export async function scanLowQuality(agentId: string): Promise<LowQualityItem[]>
 
 // ── generateReviewBatch ───────────────────────────────────────────────────────
 
-const DEFAULT_OUTPUT_DIR = path.join(
-  process.env.HOME || '/tmp',
-  'Library',
-  'Mobile Documents',
-  'REDACTED_CLOUD_SYNC',
-  'Documents',
-  'REDACTED_VAULT'
-)
+const DEFAULT_OUTPUT_DIR = process.env.AMEM_REVIEW_DIR || process.cwd()
 
 function nextBatchNumber(dir: string): number {
   let max = 0
@@ -109,7 +102,7 @@ export async function generateReviewBatch(agentId: string, outputPath?: string):
   lines.push(`# A-MEM 质量审核 — Batch ${batchN || 'custom'}`)
   lines.push('')
   lines.push(`> 生成时间：${now} | 共 ${items.length} 条低质量条目`)
-  lines.push('> 选好后告诉 the assistant，她来批量处理')
+  lines.push('> 选好后可使用 memory_quality_apply 批量处理')
   lines.push('')
 
   if (items.length === 0) {

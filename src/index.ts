@@ -6,7 +6,7 @@
  *   - src/memory.ts  (addMemory, searchMemory, listMemories)
  *   - src/storage.ts (Qdrant)
  *   - src/embedding.ts (Transformers.js)
- *   - src/llm.ts (Anthropic via LLM proxy)
+ *   - src/llm.ts (Anthropic SDK)
  */
 
 import * as os from 'os'

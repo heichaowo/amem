@@ -72,7 +72,11 @@ These environment variables override plugin defaults at runtime. Useful for test
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `AMEM_LLM_MODEL` | `claude-sonnet-4-6` | LLM model used for note construction, CRUD decisions, link judgment, and memory evolution. Set to a Gemini model when running smoke tests to avoid consuming Claude quota. |
+| `AMEM_LLM_BASE_URL` | `http://127.0.0.1:8080` | Base URL for the Anthropic-compatible LLM endpoint. |
+| `AMEM_LLM_API_KEY` | `YOUR_API_KEY` | API key for the LLM endpoint. |
 | `AMEM_COLLECTION` | `amem_notes` | Qdrant collection name. Override to use a separate collection for testing. |
+| `AMEM_REVIEW_DIR` | `process.cwd()` | Output directory for quality review batch files. |
+| `AMEM_EVO_COUNTER_PATH` | `~/.openclaw/amem_evo_cnt.json` | File path for the evolution throttle counter. |
 
 ### Example: run smoke test with Gemini
 
@@ -82,7 +86,7 @@ AMEM_LLM_MODEL=gemini-3.5-flash-low node run_smoketest.mjs
 
 ## LLM requirements
 
-The plugin requires an **Anthropic-compatible LLM proxy** on `http://127.0.0.1:8080` with API key `YOUR_API_KEY` (configurable via source).
+The plugin requires an **Anthropic-compatible LLM endpoint** configured via `AMEM_LLM_BASE_URL` and `AMEM_LLM_API_KEY` environment variables.
 
 Any model that follows the Anthropic Messages API is supported. Recommended:
 
