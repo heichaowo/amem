@@ -14,9 +14,8 @@ npm run build
 ```bash
 npm run lint               # ESLint (Flat Config)
 npm run format             # Prettier check
-npm run check:boundaries   # Import boundary & absolute path audit
 npm run test               # Vitest unit & integration tests
-npm run check              # Full suite (format + lint + boundaries + test)
+npm run check              # Full suite (format + lint + test)
 ```
 
 ## Test coverage
@@ -40,11 +39,9 @@ openclaw-amem/
 │   ├── storage.ts        # Qdrant client & collection management
 │   ├── embedding.ts      # Local ONNX embedding via Transformers.js
 │   ├── llm.ts            # LLM calls (note construction, CRUD, links, evolution)
-│   ├── bm25.ts           # BM25 ranking with Jieba tokenization
-│   └── types.ts          # Shared TypeScript types
-├── test/                 # Vitest test suite
-├── website/              # This documentation site (VitePress)
-└── docs/                 # Internal development notes
+│   ├── quality.ts        # Memory quality scanning & review batch generation
+│   └── evo-counter.ts    # Evolution throttle counter
+└── website/              # Documentation site (VitePress)
 ```
 
 ## References

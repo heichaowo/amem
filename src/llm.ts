@@ -3,11 +3,12 @@
  */
 
 import Anthropic from '@anthropic-ai/sdk'
+import { t } from './prompts.js'
 
 // ── Client ────────────────────────────────────────────────────────────────────
 const client = new Anthropic({
-  apiKey: process.env.AMEM_LLM_API_KEY || 'YOUR_API_KEY',
-  baseURL: process.env.AMEM_LLM_BASE_URL || 'http://127.0.0.1:8080',
+  ...(process.env.AMEM_LLM_API_KEY && { apiKey: process.env.AMEM_LLM_API_KEY }),
+  ...(process.env.AMEM_LLM_BASE_URL && { baseURL: process.env.AMEM_LLM_BASE_URL }),
 })
 
 const MODEL = process.env.AMEM_LLM_MODEL ?? 'claude-sonnet-4-6' // override via env for smoketest/benchmark
@@ -142,7 +143,7 @@ Text: ${content}`
     const note_type: 'memory' | 'knowledge' = data.note_type === 'knowledge' ? 'knowledge' : 'memory'
     const topics: string[] =
       note_type === 'knowledge' && Array.isArray(data.topics)
-        ? (data.topics as unknown[]).filter((t): t is string => typeof t === 'string')
+        ? (data.topics as unknown[]).filter((v): v is string => typeof v === 'string')
         : []
     const rawConfidence = typeof data.confidence === 'string' ? data.confidence : 'medium'
     const confidence: 'high' | 'medium' | 'low' = VALID_CONFIDENCE.has(rawConfidence)
@@ -188,7 +189,7 @@ Note B: ${candidateContent}`
 export interface MemoryOperation {
   action: 'NEW' | 'UPDATE' | 'DELETE' | 'NONE'
   fact: string
-  existingIdx?: number // UPDATE/DELETE 时，对应 existingMemories 的整数下标（防幻觉）
+  existingIdx?: number // For UPDATE/DELETE: integer index into existingMemories (guards against hallucination)
   reason?: string
 }
 
@@ -200,38 +201,9 @@ export async function llmCrudDecision(
   const memoryList =
     existingMemories.length > 0
       ? existingMemories.map((m) => `[${m.idx}] ${m.content}`).join('\n')
-      : '（无已有相关记忆）'
+      : '(none)'
 
-  const prompt = `你是一个记忆管理 agent，负责分析对话内容并决定如何操作记忆库。
-
-## 对话内容
-
-用户：${userText.slice(0, 500)}
-助手：${assistantText.slice(0, 500)}
-
-## 已有相关记忆（用整数 idx 标识）
-
-${memoryList}
-
-## 任务
-
-分析上述对话，决定需要哪些记忆操作。只提取真正重要的长期事实（决策、偏好、账号信息、项目状态、关键洞察）。跳过闲聊、确认语、重复信息。
-
-## 操作类型
-- NEW：提取全新事实（已有记忆中没有的信息）
-- UPDATE：新信息更新了某条已有记忆，用 existingIdx 指定要更新的条目
-- DELETE：某条已有记忆已经过时、发生冲突或错误，用 existingIdx 指定，fact 填原内容
-- NONE：不值得记录或已有完全相同的信息
-
-## 输出格式
-
-返回 JSON 数组，每条格式：
-{"action": "NEW"|"UPDATE"|"DELETE"|"NONE", "fact": "事实内容", "existingIdx": 整数或省略, "reason": "原因（可选）"}
-
-每次最多返回 3 条操作。如果没有值得操作的内容，返回 []。
-
-只返回 JSON 数组，不要任何其他文字。示例：
-[{"action": "NEW", "fact": "Alex 决定使用 React 作为前端框架", "reason": "明确的技术选型决策"}]`
+  const prompt = t.crudDecision(userText.slice(0, 500), assistantText.slice(0, 500), memoryList)
 
   try {
     const raw = await llmCall(prompt, 400)
@@ -268,18 +240,7 @@ export async function llmShouldMerge(
   contentA: string,
   contentB: string
 ): Promise<{ shouldMerge: boolean; merged?: string }> {
-  const prompt = `你是一个记忆去重助手，负责判断两条记忆是否表达了本质相同的信息。
-
-记忆A：${contentA}
-记忆B：${contentB}
-
-请判断：
-- 如果两条记忆表达的是本质相同的信息（可能措辞不同、粒度不同，但核心事实一致），返回 JSON：
-  {"shouldMerge": true, "merged": "合并后的简洁表述，保留两条记忆的关键信息，比任何一条都更完整"}
-- 如果两条记忆是互补信息、不同主题、或包含不同的具体事实，返回 JSON：
-  {"shouldMerge": false}
-
-只返回 JSON，不要任何其他文字。`
+  const prompt = t.shouldMerge(contentA, contentB)
 
   const raw = await llmCall(prompt, 300)
   if (!raw) return { shouldMerge: false }
@@ -308,22 +269,7 @@ export async function llmEvolutionJudge(
   oldContent: string,
   newContent: string
 ): Promise<{ type: EvolutionType; mergedContent?: string }> {
-  const prompt = `你是一个记忆演化判断助手。分析以下两条记忆的关系并返回 JSON。
-
-旧记忆：${oldContent}
-新记忆：${newContent}
-
-判断规则：
-- EVOLVE：新内容是对旧记忆的深化/更新（如「想买 Model 3」→「决定买 Model 3 标准后驱版」）
-  返回：{"type": "EVOLVE", "mergedContent": "融合后的完整内容，保留演化轨迹"}
-- CONFLICT：新旧信息矛盾/冲突（如「在Riverstone工作」vs「已搬到Eastholm」）
-  返回：{"type": "CONFLICT"}
-- EXPAND：新信息是对旧记忆的补充扩展（如「有姐姐」+「姐姐在Northvale工作」）
-  返回：{"type": "EXPAND", "mergedContent": "合并后的完整内容，整合双方信息"}
-- NEW：全新信息，与旧记忆无实质关联
-  返回：{"type": "NEW"}
-
-只返回 JSON，不要任何其他文字。`
+  const prompt = t.evolutionJudge(oldContent, newContent)
 
   const raw = await llmCall(prompt, 300)
   if (!raw) return { type: 'NEW' }

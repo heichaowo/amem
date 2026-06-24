@@ -5,6 +5,10 @@
 import * as fs from 'fs'
 import * as path from 'path'
 import { listNotes, patchNotePayload, type MemoryNote } from './storage.js'
+import type { PromptLocale } from './prompts.js'
+
+const LOCALE: PromptLocale =
+  (process.env.AMEM_PROMPT_LOCALE as PromptLocale) === 'zh' ? 'zh' : 'en'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -74,13 +78,17 @@ function nextBatchNumber(dir: string): number {
 }
 
 function reasonLabel(r: LowQualityReason): string {
+  if (LOCALE === 'zh') {
+    switch (r) {
+      case 'too_short': return '内容过短（<10字）'
+      case 'expired_ephemeral': return '临时记忆已过期（>7天）'
+      case 'pending_conflict': return '存在冲突标记'
+    }
+  }
   switch (r) {
-    case 'too_short':
-      return '内容过短（<10字）'
-    case 'expired_ephemeral':
-      return '临时记忆已过期（>7天）'
-    case 'pending_conflict':
-      return '存在冲突标记'
+    case 'too_short': return 'Content too short (<10 chars)'
+    case 'expired_ephemeral': return 'Ephemeral memory expired (>7 days)'
+    case 'pending_conflict': return 'Pending conflict flag'
   }
 }
 
@@ -99,14 +107,23 @@ export async function generateReviewBatch(agentId: string, outputPath?: string):
   const now = new Date().toISOString().slice(0, 10)
   const lines: string[] = []
 
-  lines.push(`# A-MEM 质量审核 — Batch ${batchN || 'custom'}`)
+  const title = LOCALE === 'zh' ? 'A-MEM 质量审核' : 'A-MEM Quality Review'
+  const genLabel = LOCALE === 'zh' ? '生成时间' : 'Generated'
+  const countLabel = LOCALE === 'zh'
+    ? `共 ${items.length} 条低质量条目`
+    : `${items.length} low-quality item(s)`
+  const applyHint = LOCALE === 'zh'
+    ? '选好后可使用 memory_quality_apply 批量处理'
+    : 'Use memory_quality_apply to batch-process selected items'
+
+  lines.push(`# ${title} — Batch ${batchN || 'custom'}`)
   lines.push('')
-  lines.push(`> 生成时间：${now} | 共 ${items.length} 条低质量条目`)
-  lines.push('> 选好后可使用 memory_quality_apply 批量处理')
+  lines.push(`> ${genLabel}：${now} | ${countLabel}`)
+  lines.push(`> ${applyHint}`)
   lines.push('')
 
   if (items.length === 0) {
-    lines.push('✅ 没有发现低质量条目。')
+    lines.push(LOCALE === 'zh' ? '✅ 没有发现低质量条目。' : '✅ No low-quality items found.')
   }
 
   for (let i = 0; i < items.length; i++) {
@@ -114,22 +131,30 @@ export async function generateReviewBatch(agentId: string, outputPath?: string):
     const badge = severityBadge(reasons)
     const reasonStr = reasons.map(reasonLabel).join('、')
 
+    const issueLabel = LOCALE === 'zh' ? '问题' : 'Issue'
+    const contentLabel = LOCALE === 'zh' ? '内容' : 'Content'
+    const kwLabel = LOCALE === 'zh' ? '关键词' : 'Keywords'
+    const tagLabel = LOCALE === 'zh' ? '标签' : 'Tags'
+    const keepLabel = LOCALE === 'zh' ? '保留' : 'Keep'
+    const rewriteLabel = LOCALE === 'zh' ? '改写' : 'Rewrite'
+    const deleteLabel = LOCALE === 'zh' ? '删除' : 'Delete'
+
     lines.push(`### [${i + 1}] ${badge} | ${note.category || 'General'}`)
     lines.push(`\`${note.id}\``)
     lines.push('')
-    lines.push(`**问题：** ${reasonStr}`)
+    lines.push(`**${issueLabel}：** ${reasonStr}`)
     lines.push('')
-    lines.push('**内容：**')
+    lines.push(`**${contentLabel}：**`)
     lines.push('```')
     lines.push(note.content)
     lines.push('```')
     lines.push('')
-    lines.push(`**关键词：** ${note.keywords.join(', ')}`)
-    lines.push(`**标签：** ${note.tags.join(', ')}`)
+    lines.push(`**${kwLabel}：** ${note.keywords.join(', ')}`)
+    lines.push(`**${tagLabel}：** ${note.tags.join(', ')}`)
     lines.push('')
-    lines.push('- [ ] ✅ 保留')
-    lines.push('- [ ] 🔧 改写')
-    lines.push('- [ ] 🗑️ 删除')
+    lines.push(`- [ ] ✅ ${keepLabel}`)
+    lines.push(`- [ ] 🔧 ${rewriteLabel}`)
+    lines.push(`- [ ] 🗑️ ${deleteLabel}`)
     lines.push('')
     lines.push('---')
     lines.push('')
