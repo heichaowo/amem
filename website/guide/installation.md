@@ -2,11 +2,11 @@
 
 ## Requirements
 
-| Dependency | Version |
-|-----------|---------|
-| OpenClaw | v2026.4+ |
-| Node.js | 18+ (Node 24/26 fully supported) |
-| Qdrant | Running on `:6333` |
+| Dependency  | Version                                                        |
+| ----------- | -------------------------------------------------------------- |
+| OpenClaw    | v2026.4+                                                       |
+| Node.js     | 18+ (Node 24/26 fully supported)                               |
+| Qdrant      | Running on `:6333`                                             |
 | LLM API Key | `ANTHROPIC_API_KEY` env var (or `AMEM_LLM_BASE_URL` for proxy) |
 
 Qdrant can be started via Docker:
@@ -58,6 +58,36 @@ Add `openclaw-amem` to your plugin config and hook it into the `memory` slot:
   }
 }
 ```
+
+::: warning Memory slot conflict
+If your `openclaw.json` already has a `memory` slot assigned to another plugin (e.g. `memory-core`), **you must replace it** with `openclaw-amem`. The gateway only loads one plugin per slot — a second `memory`-kind plugin is **silently skipped** with no log output.
+
+```json
+// ❌ Will cause amem to be silently ignored
+"slots": {
+  "memory": "memory-core"
+}
+
+// ✅ Correct — amem replaces memory-core
+"slots": {
+  "memory": "openclaw-amem"
+}
+```
+
+If you were previously using `memory-core`, you can safely remove or disable it in `plugins.entries`:
+
+```json
+"entries": {
+  "memory-core": { "enabled": false },
+  "openclaw-amem": {
+    "enabled": true,
+    "hooks": { "allowConversationAccess": true },
+    "config": { "agentId": "main", "topK": 5 }
+  }
+}
+```
+
+:::
 
 > **Required:** `hooks.allowConversationAccess: true` must be set explicitly. Without it, the `agent_end` hook is blocked by OpenClaw's security policy and **automatic memory write-back will not work** — memories will only be written when you call `memory_add` manually.
 
