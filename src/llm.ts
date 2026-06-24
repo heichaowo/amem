@@ -1,14 +1,13 @@
 /**
  * llm.ts — LLM helpers for A-MEM note construction, linking, evolution
- * Uses @anthropic-ai/sdk via LLM proxy (http://127.0.0.1:8080)
  */
 
 import Anthropic from '@anthropic-ai/sdk'
 
-// ── Client (LLM proxy) ────────────────────────────────────────────────────────
+// ── Client ────────────────────────────────────────────────────────────────────
 const client = new Anthropic({
-  apiKey: 'YOUR_API_KEY',
-  baseURL: 'http://127.0.0.1:8080',
+  apiKey: process.env.AMEM_LLM_API_KEY || 'YOUR_API_KEY',
+  baseURL: process.env.AMEM_LLM_BASE_URL || 'http://127.0.0.1:8080',
 })
 
 const MODEL = process.env.AMEM_LLM_MODEL ?? 'claude-sonnet-4-6' // override via env for smoketest/benchmark

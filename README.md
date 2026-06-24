@@ -188,7 +188,7 @@ Consolidation runs per-agent scope: `dev`'s consolidation never touches `main`'s
 *   OpenClaw v2026.4+
 *   Node.js 18+ (Node 24/26 fully supported)
 *   Qdrant running on `:6333`
-*   Anthropic-compatible LLM proxy on `:8080` (uses `claude-sonnet-4-6` or compatible)
+*   Anthropic-compatible LLM endpoint (configure via `AMEM_LLM_BASE_URL` and `AMEM_LLM_API_KEY` env vars)
 
 ---
 

@@ -12,7 +12,8 @@ import * as fs from 'fs'
 import * as path from 'path'
 import * as os from 'os'
 
-const COUNTER_FILE = path.join(os.homedir(), '.openclaw', 'amem_evo_cnt.json')
+const COUNTER_FILE = process.env.AMEM_EVO_COUNTER_PATH
+  || path.join(os.homedir(), '.openclaw', 'amem_evo_cnt.json')
 const EVO_THRESHOLD = 20
 
 interface CounterData {
