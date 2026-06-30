@@ -1,6 +1,6 @@
 {
   "name": "openclaw-amem",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "A-MEM agentic memory backend for OpenClaw — TypeScript rewrite",
   "main": "dist/index.js",
   "openclaw": {
