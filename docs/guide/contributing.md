@@ -2,39 +2,39 @@
 
 ## Development setup
 
+This is a [pnpm](https://pnpm.io) monorepo (Node 24).
+
 ```bash
-git clone https://github.com/heichaowo/openclaw-amem
-cd openclaw-amem
-npm install
-npm run build
+git clone https://github.com/heichaowo/amem
+cd amem
+pnpm install        # first run: `pnpm approve-builds` for onnxruntime-node / sharp / esbuild
+pnpm -r build
 ```
 
 ## Running checks
 
 ```bash
-npm run lint               # ESLint (Flat Config)
-npm run format             # Prettier check
-npm run test               # Vitest unit & integration tests
-npm run check              # Full suite (format + lint + test)
+pnpm -r lint               # ESLint (Flat Config)
+pnpm format                # Prettier check
+pnpm -r typecheck
+pnpm -r test               # Vitest — integration tests need Qdrant :6333 + ANTHROPIC_API_KEY
 ```
 
 ## Test coverage
 
-Test suite is under reconstruction. See [GitHub Issues](https://github.com/heichaowo/openclaw-amem/issues) for progress.
+Test suite is under reconstruction. See [GitHub Issues](https://github.com/heichaowo/amem/issues) for progress.
 
 ## Project structure
 
 ```
-openclaw-amem/
-├── src/
-│   ├── index.ts          # Plugin entry point & OpenClaw hooks
-│   ├── memory.ts         # Core A-MEM operations (add, search, consolidate)
-│   ├── storage.ts        # Qdrant client & collection management
-│   ├── embedding.ts      # Local ONNX embedding via Transformers.js
-│   ├── llm.ts            # LLM calls (note construction, CRUD, links, evolution)
-│   ├── quality.ts        # Memory quality scanning & review batch generation
-│   └── evo-counter.ts    # Evolution throttle counter
-└── website/              # Documentation site (VitePress)
+amem/
+├── packages/
+│   ├── amem-core/         @heichaowo/amem-core — the framework-agnostic engine
+│   │   └── src/           memory · storage · embedding · llm · prompts · quality · evo-counter · config
+│   └── openclaw-amem/     the OpenClaw plugin (bundles amem-core)
+│       └── src/index.ts   plugin entry & OpenClaw hooks
+├── docs/                  documentation site (VitePress)
+└── pnpm-workspace.yaml
 ```
 
 ## References

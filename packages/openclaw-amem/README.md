@@ -15,7 +15,7 @@ The first open-source A-MEM memory plugin for OpenClaw: dynamic graph linking, h
 > 🧠 The memory **engine** lives in **[`@heichaowo/amem-core`](../amem-core)**; this package is the thin OpenClaw plugin around it.
 > 📖 Full guides, architecture & references: **[amem.owo.lc](https://amem.owo.lc)**.
 
-⭐ Useful? [Star it on GitHub](https://github.com/heichaowo/openclaw-amem).
+⭐ Useful? [Star it on GitHub](https://github.com/heichaowo/amem).
 
 ## Highlights
 
@@ -46,11 +46,9 @@ openclaw plugins install clawhub:@heichaowo/openclaw-amem
 # From npm
 openclaw plugins install openclaw-amem
 
-# From git
-openclaw plugins install git:github.com/heichaowo/openclaw-amem
-
-# From local checkout
-openclaw plugins install --link ./openclaw-amem
+# From a local checkout of the amem monorepo
+pnpm --filter openclaw-amem build
+openclaw plugins install --link ./packages/openclaw-amem
 ```
 
 ### 2. Configure `~/.openclaw/openclaw.json`

@@ -23,11 +23,9 @@ docker run -p 6333:6333 qdrant/qdrant
 # From npm (recommended)
 openclaw plugins install openclaw-amem
 
-# From git
-openclaw plugins install git:github.com/heichaowo/openclaw-amem
-
-# From local checkout
-openclaw plugins install --link ./openclaw-amem
+# From a local checkout of the amem monorepo
+pnpm --filter openclaw-amem build
+openclaw plugins install --link ./packages/openclaw-amem
 ```
 
 ---
