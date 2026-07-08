@@ -13,5 +13,5 @@ export default defineConfig({
     'openclaw',
     /^openclaw\/.+/
   ],
-  noExternal: ['chromadb', '@anthropic-ai/sdk', 'uuid'],
+  noExternal: ['@heichaowo/amem-core', '@anthropic-ai/sdk', 'uuid'],
 })
