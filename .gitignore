@@ -6,8 +6,8 @@ dist/
 *.js.map
 
 # ── Documentation site ────────────────────────────────────────────────────────
-website/.vitepress/dist
-website/.vitepress/cache
+docs/.vitepress/dist
+docs/.vitepress/cache
 
 # ── Secrets & environment ────────────────────────────────────────────────────
 .env
@@ -29,10 +29,10 @@ _bmad-output/
 # ── Directories purged from history (guard against re-creation) ──────────────
 scripts/
 test/
-docs/
 
 # ── Files that should never be committed ─────────────────────────────────────
 acceptance-test.ts
 DEV_STORY*.md
 *.plist
+*.tgz
 .git-backup/
