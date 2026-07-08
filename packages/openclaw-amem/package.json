@@ -49,11 +49,12 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/heichaowo/openclaw-amem.git"
+    "url": "https://github.com/heichaowo/amem.git",
+    "directory": "packages/openclaw-amem"
   },
   "homepage": "https://amem.owo.lc",
   "bugs": {
-    "url": "https://github.com/heichaowo/openclaw-amem/issues"
+    "url": "https://github.com/heichaowo/amem/issues"
   },
   "keywords": [
     "openclaw",
