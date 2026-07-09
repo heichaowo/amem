@@ -13,5 +13,9 @@ export default defineConfig({
     'openclaw',
     /^openclaw\/.+/
   ],
-  noExternal: ['amem-core', '@anthropic-ai/sdk', 'uuid'],
+  // Only amem-core (an unpublished workspace package) must be inlined.
+  // Everything in `dependencies` stays external so it is installed at
+  // runtime, not baked into dist — this keeps the bundle small and avoids
+  // tripping registry scanners on vendored SDK credential-reading code.
+  noExternal: ['amem-core'],
 })
