@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.1.0
+
+### Minor Changes
+
+- f0ec301: Repackage as the `amem` pnpm monorepo and extract the memory engine into `amem-core` (bundled into the plugin, so there is no install or runtime change for users). New baseline `1.1.0` following the ClawHub 1.0.x line.
+
 ## v1.0.1
 
 ### Fixed
@@ -8,8 +14,8 @@
   signal (`hookEverFired` / plugin start time) was per-`register()`-call closure
   state. On a config hot-reload the gateway re-runs `register()` in the same
   process, leaving multiple coexisting plugin instances. `agent_end` would fire
-  on a newer instance (marking *its* flag), while a `memory_search` handler bound
-  to a *stale* instance read *its own* `false` flag — appending the warning to
+  on a newer instance (marking _its_ flag), while a `memory_search` handler bound
+  to a _stale_ instance read _its own_ `false` flag — appending the warning to
   results even though the hook was firing and memories were being written.
 
   The signal is now anchored on `globalThis` (`src/hook-liveness.ts`), shared by
