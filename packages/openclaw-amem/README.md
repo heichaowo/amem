@@ -12,7 +12,7 @@
 
 The first open-source A-MEM memory plugin for OpenClaw: dynamic graph linking, hybrid (BM25 + dense) retrieval with 2-hop graph expansion, and LLM-driven memory evolution. Backed by Qdrant + local Transformers.js. **No Python required.**
 
-> 🧠 The memory **engine** lives in **[`@heichaowo/amem-core`](../amem-core)**; this package is the thin OpenClaw plugin around it.
+> 🧠 The memory **engine** lives in **[`amem-core`](../amem-core)**; this package is the thin OpenClaw plugin around it.
 > 📖 Full guides, architecture & references: **[amem.owo.lc](https://amem.owo.lc)**.
 
 ⭐ Useful? [Star it on GitHub](https://github.com/heichaowo/amem).
@@ -117,7 +117,7 @@ pnpm --filter openclaw-amem test    # vitest (needs Qdrant on :6333)
 
 ## Docs & References
 
-Full guides, architecture, and academic references: **[amem.owo.lc](https://amem.owo.lc)** · engine: **[@heichaowo/amem-core](../amem-core)** · paper: [A-MEM (arXiv:2502.12110)](https://arxiv.org/abs/2502.12110).
+Full guides, architecture, and academic references: **[amem.owo.lc](https://amem.owo.lc)** · engine: **[amem-core](../amem-core)** · paper: [A-MEM (arXiv:2502.12110)](https://arxiv.org/abs/2502.12110).
 
 ## License
 

@@ -1,5 +1,5 @@
 {
-  "name": "@heichaowo/amem-core",
+  "name": "amem-core",
   "version": "0.1.0",
   "private": true,
   "description": "A-MEM agentic memory engine — Qdrant + Transformers.js, framework-agnostic. Extracted from openclaw-amem.",

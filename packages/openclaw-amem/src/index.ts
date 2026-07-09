@@ -25,7 +25,7 @@ import {
   configure,
   type AmemPluginConfig,
   type StorageContext,
-} from '@heichaowo/amem-core'
+} from 'amem-core'
 import { createHash } from 'crypto'
 
 // ── Config ────────────────────────────────────────────────────────────────────
@@ -461,7 +461,7 @@ function register(api: {
           }))
 
           // ── Step 3: 调用 llmCrudDecision ────────────────────────────────────────────
-          const { llmCrudDecision } = await import('@heichaowo/amem-core')
+          const { llmCrudDecision } = await import('amem-core')
           const operations = await llmCrudDecision(
             userText,
             assistantText,
@@ -601,4 +601,4 @@ export {
   patchNotePayload,
   scanLowQuality,
   generateReviewBatch,
-} from '@heichaowo/amem-core'
+} from 'amem-core'
