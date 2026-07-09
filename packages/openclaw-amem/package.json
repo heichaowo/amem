@@ -2,6 +2,7 @@
   "name": "openclaw-amem",
   "version": "1.1.0",
   "description": "A-MEM agentic memory backend for OpenClaw — TypeScript rewrite",
+  "license": "MIT",
   "main": "dist/index.js",
   "openclaw": {
     "extensions": [
@@ -49,7 +50,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/heichaowo/amem.git",
+    "url": "git+https://github.com/heichaowo/amem.git",
     "directory": "packages/openclaw-amem"
   },
   "homepage": "https://amem.owo.lc",
