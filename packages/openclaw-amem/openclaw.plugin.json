@@ -2,7 +2,7 @@
   "id": "openclaw-amem",
   "name": "Memory (A-MEM v2)",
   "description": "A-MEM agentic memory backend for OpenClaw — Qdrant + Transformers.js, no Python required. Note construction, link generation, memory evolution.",
-  "version": "1.1.1",
+  "version": "1.1.2",
   "kind": "memory",
   "openclaw": {
     "compat": {
@@ -41,14 +41,22 @@
   "providerEndpoints": [
     {
       "endpointClass": "qdrant",
-      "hosts": ["localhost"],
-      "baseUrls": ["http://localhost:6333"],
+      "hosts": [
+        "localhost"
+      ],
+      "baseUrls": [
+        "http://localhost:6333"
+      ],
       "note": "Local Qdrant vector store for memory embeddings."
     },
     {
       "endpointClass": "anthropic",
-      "hosts": ["api.anthropic.com"],
-      "hostSuffixes": [".anthropic.com"],
+      "hosts": [
+        "api.anthropic.com"
+      ],
+      "hostSuffixes": [
+        ".anthropic.com"
+      ],
       "note": "LLM for note construction / link generation / evolution; override the base URL via AMEM_LLM_BASE_URL."
     }
   ],
