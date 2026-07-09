@@ -33,7 +33,7 @@
     "uuid": "^14.0.0"
   },
   "devDependencies": {
-    "@heichaowo/amem-core": "workspace:*",
+    "amem-core": "workspace:*",
     "@eslint/js": "^10.0.1",
     "eslint": "^10.4.1",
     "prettier": "^3.8.3",

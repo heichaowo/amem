@@ -1,5 +1,5 @@
 /**
- * @heichaowo/amem-core — A-MEM agentic memory engine (framework-agnostic).
+ * amem-core — A-MEM agentic memory engine (framework-agnostic).
  *
  * Qdrant + Transformers.js, no Python. Note construction, link generation,
  * memory evolution, and hybrid (BM25 + dense) retrieval with graph expansion.
