@@ -1,7 +1,7 @@
 # openclaw-amem
 
 <p align="center">
-  <img src="https://amem.owo.lc/logo.webp" width="120" alt="A-MEM Logo" />
+  <img src="https://raw.githubusercontent.com/heichaowo/amem/main/docs/public/logo.webp" width="120" alt="A-MEM Logo" />
 </p>
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow?style=for-the-badge)](../../LICENSE)
