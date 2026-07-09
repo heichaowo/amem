@@ -3,7 +3,7 @@ import { createRequire } from 'module'
 import llmstxt from 'vitepress-plugin-llms'
 
 const require = createRequire(import.meta.url)
-const pkg = require('../../package.json')
+const pkg = require('../../packages/openclaw-amem/package.json')
 
 export default defineConfig({
   title: 'openclaw-amem',
@@ -21,7 +21,7 @@ export default defineConfig({
     nav: [
       { text: 'Guide', link: '/guide/introduction' },
       { text: 'Reference', link: '/reference/configuration' },
-      { text: `v${pkg.version}`, link: 'https://github.com/heichaowo/openclaw-amem/releases' },
+      { text: `v${pkg.version}`, link: 'https://github.com/heichaowo/amem/releases' },
     ],
 
     sidebar: [
@@ -59,7 +59,7 @@ export default defineConfig({
     ],
 
     socialLinks: [
-      { icon: 'github', link: 'https://github.com/heichaowo/openclaw-amem' },
+      { icon: 'github', link: 'https://github.com/heichaowo/amem' },
     ],
 
     footer: {
@@ -68,7 +68,7 @@ export default defineConfig({
     },
 
     editLink: {
-      pattern: 'https://github.com/heichaowo/openclaw-amem/edit/main/website/:path',
+      pattern: 'https://github.com/heichaowo/amem/edit/main/docs/:path',
       text: 'Edit this page on GitHub',
     },
 
