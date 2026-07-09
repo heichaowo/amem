@@ -11,7 +11,7 @@
     "test": "pnpm -r test",
     "lint": "pnpm -r lint",
     "changeset": "changeset",
-    "version": "changeset version",
+    "version": "changeset version && node tools/sync-plugin-version.mjs",
     "release": "pnpm -r build && changeset publish",
     "format": "prettier --check \"packages/**/src/**/*.ts\"",
     "format:fix": "prettier --write \"packages/**/src/**/*.ts\"",
