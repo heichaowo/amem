@@ -27,6 +27,7 @@ import {
   type StorageContext,
 } from 'amem-core'
 import { createHash } from 'crypto'
+import { hookLiveness, markHookFired, hookNeverFiredWarning } from './hook-liveness.js'
 
 // ── Config ────────────────────────────────────────────────────────────────────
 let _config: Record<string, unknown> = {}
@@ -46,8 +47,8 @@ function register(api: {
   registerTool?: (tool: unknown, opts?: unknown) => void
   registerService?: (svc: unknown) => void
 }) {
-  const pluginStartTime = Date.now()
   const logger = api.logger
+  hookLiveness() // anchor the process-wide hook-liveness clock at plugin load
   _config = (api.pluginConfig as Record<string, unknown>) || {}
   const pluginConfig = _config as AmemPluginConfig
 
@@ -199,13 +200,9 @@ function register(api: {
           async execute(_toolCallId: string, params: { query: string; limit?: number; topicsFilter?: string[] }) {
             const { query, limit = 5, topicsFilter } = params
             const start = Date.now()
-            // Story 34: warn if agent_end hook never fired (likely blocked)
-            const pluginUptime = Date.now() - pluginStartTime
-            const hookWarning =
-              !hookEverFired && pluginUptime > 10 * 60 * 1000
-                ? '\n\n⚠️ Warning: agent_end hook has never fired. Automatic memory write-back may be disabled. ' +
-                  'Set plugins.entries.openclaw-amem.hooks.allowConversationAccess=true in openclaw.json.'
-                : ''
+            // Story 34 (v1.0.1): warn only if the agent_end hook has never fired
+            // on ANY instance in this process (reload-stable; see hookNeverFiredWarning).
+            const hookWarning = hookNeverFiredWarning()
             try {
               const results = await searchMemory(query, limit, scope.agentId, {
                 topicsFilter,
@@ -394,8 +391,6 @@ function register(api: {
   }
 
   // ── agent_end hook: auto-capture memories after each turn ─────────────────
-  let hookEverFired = false
-
   if (typeof (api as any).registerHook === 'function' || typeof (api as any).on === 'function') {
     const hookFn = (typeof (api as any).on === 'function' ? (api as any).on : (api as any).registerHook).bind(api)
     hookFn(
@@ -407,7 +402,7 @@ function register(api: {
         },
         ctx?: AgentCtx
       ) => {
-        hookEverFired = true
+        markHookFired()
         // Story 32 (Issue 1): resolve the per-session agent scope from the hook ctx.
         const scope = buildScope(resolveAgentId(ctx))
         const agentId = scope.agentId
@@ -523,7 +518,7 @@ function register(api: {
     // Story 34: 10min self-check — warn if hook never fired (likely blocked)
     setTimeout(
       () => {
-        if (!hookEverFired) {
+        if (!hookLiveness().everFired) {
           logger.warn(
             '⚠️ openclaw-amem: agent_end hook has never fired in 10 minutes. ' +
               'It may be blocked by OpenClaw security policy. ' +
@@ -585,6 +580,7 @@ const plugin = definePluginEntry({
 
 export default plugin
 export { register }
+export { hookLiveness, markHookFired, hookNeverFiredWarning } from './hook-liveness.js'
 export {
   addMemory,
   searchMemory,
