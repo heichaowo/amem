@@ -9,9 +9,9 @@
 - [ ] **High Blast Radius**: Changes affecting database schemas, embedding generation, Qdrant connection logic, or backward compatibility.
 
 ## 3. Pre-Land Checklists
-- [ ] **Compilation**: Code builds successfully without any errors (`npm run build` exits with 0).
-- [ ] **Modern Entrypoint**: Entry point in `src/index.ts` is wrapped in `definePluginEntry` and exported as `default`.
-- [ ] **Manifest Declaration**: Any new tool registered via `api.registerTool` is declared under `contracts.tools` in `openclaw.plugin.json`.
+- [ ] **Compilation**: Code builds successfully without any errors (`pnpm -r build` exits with 0).
+- [ ] **Modern Entrypoint**: Plugin entry point in `packages/openclaw-amem/src/index.ts` is wrapped in `definePluginEntry` and exported as `default`.
+- [ ] **Manifest Declaration**: Any new tool registered via `api.registerTool` is declared under `contracts.tools` in `packages/openclaw-amem/openclaw.plugin.json`.
 - [ ] **No Hardcoded Paths**: Removed all hardcoded absolute system paths. Paths are resolved dynamically (e.g. via `os.homedir()` or environment variables).
 - [ ] **No Dead Code**: Cleared any unused imports, orphaned variables, and redundant code introduced by this PR.
 
@@ -20,6 +20,6 @@
 
 ```bash
 # Example terminal output showing your changes in action:
-$ npm run build
+$ pnpm -r build
 ...
 ```

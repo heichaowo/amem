@@ -1,0 +1,9 @@
+packages:
+  - 'packages/*'
+
+# pnpm 11 reads the build-scripts allowlist here (not from package.json's pnpm.onlyBuiltDependencies).
+allowBuilds:
+  esbuild: true
+  onnxruntime-node: true
+  protobufjs: true
+  sharp: true

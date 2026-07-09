@@ -1,0 +1,64 @@
+{
+  "name": "amem-core",
+  "version": "0.1.0",
+  "description": "A-MEM agentic memory engine — Qdrant + Transformers.js, framework-agnostic. Extracted from openclaw-amem.",
+  "license": "MIT",
+  "type": "module",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    }
+  },
+  "files": [
+    "dist/",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.52.0",
+    "@huggingface/transformers": "^3.5.0",
+    "@node-rs/jieba": "^2.0.1",
+    "@qdrant/js-client-rest": "^1.18.0",
+    "uuid": "^14.0.0"
+  },
+  "devDependencies": {
+    "@types/uuid": "^10.0.0",
+    "tsup": "^8.4.0",
+    "typescript": "^5.9.3",
+    "vitest": "^4.1.8"
+  },
+  "optionalDependencies": {
+    "@node-rs/jieba-darwin-arm64": "^2.0.1",
+    "@node-rs/jieba-linux-x64-gnu": "^2.0.1"
+  },
+  "keywords": [
+    "a-mem",
+    "agentic-memory",
+    "agent-memory",
+    "memory",
+    "qdrant",
+    "vector-memory",
+    "llm-memory",
+    "transformers",
+    "embeddings"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/heichaowo/amem.git",
+    "directory": "packages/amem-core"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

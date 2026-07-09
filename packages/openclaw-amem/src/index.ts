@@ -12,11 +12,21 @@
 import * as os from 'os'
 import * as path from 'path'
 import { definePluginEntry } from 'openclaw/plugin-sdk/plugin-entry'
-import { addMemory, searchMemory, listMemories, mergeSimilarNotes, consolidateMemories } from './memory.js'
-import { ensureCollection, createStorageContext, type AmemPluginConfig, type StorageContext } from './storage.js'
-import { encode } from './embedding.js'
+import {
+  addMemory,
+  searchMemory,
+  listMemories,
+  mergeSimilarNotes,
+  consolidateMemories,
+  ensureCollection,
+  createStorageContext,
+  encode,
+  generateReviewBatch,
+  configure,
+  type AmemPluginConfig,
+  type StorageContext,
+} from 'amem-core'
 import { createHash } from 'crypto'
-import { generateReviewBatch } from './quality.js'
 import { hookLiveness, markHookFired, hookNeverFiredWarning } from './hook-liveness.js'
 
 // ── Config ────────────────────────────────────────────────────────────────────
@@ -41,6 +51,9 @@ function register(api: {
   hookLiveness() // anchor the process-wide hook-liveness clock at plugin load
   _config = (api.pluginConfig as Record<string, unknown>) || {}
   const pluginConfig = _config as AmemPluginConfig
+
+  // Preserve the plugin's existing on-disk data location (evo counter + consolidation logs).
+  configure({ dataDir: path.join(os.homedir(), '.openclaw') })
 
   // ── Story 32 (Issue 1): per-agent scope resolved PER CALL, not at register ────
   // The runtime per-session agentId is only present on each interface's ctx — it
@@ -443,7 +456,7 @@ function register(api: {
           }))
 
           // ── Step 3: 调用 llmCrudDecision ────────────────────────────────────────────
-          const { llmCrudDecision } = await import('./llm.js')
+          const { llmCrudDecision } = await import('amem-core')
           const operations = await llmCrudDecision(
             userText,
             assistantText,
@@ -568,9 +581,13 @@ const plugin = definePluginEntry({
 export default plugin
 export { register }
 export { hookLiveness, markHookFired, hookNeverFiredWarning } from './hook-liveness.js'
-export { addMemory, searchMemory, listMemories, mergeSimilarNotes, consolidateMemories } from './memory.js'
-export { checkQuality } from './memory.js'
 export {
+  addMemory,
+  searchMemory,
+  listMemories,
+  mergeSimilarNotes,
+  consolidateMemories,
+  checkQuality,
   ensureCollection,
   getNote,
   updateNote,
@@ -578,5 +595,6 @@ export {
   invalidateNote,
   listNotes,
   patchNotePayload,
-} from './storage.js'
-export { scanLowQuality, generateReviewBatch } from './quality.js'
+  scanLowQuality,
+  generateReviewBatch,
+} from 'amem-core'
