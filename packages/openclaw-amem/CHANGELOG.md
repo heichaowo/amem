@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.1.3
+
+### Patch Changes
+
+- [`310ea62`](https://github.com/heichaowo/amem/commit/310ea62962c88c2ec471f9879329af845b461af6) - Fix the broken logo image in the README as shown on npm and ClawHub — serve it from `raw.githubusercontent.com` instead of the `amem.owo.lc` GitHub Pages custom domain, which did not render reliably on the registry pages.
+
 ## 1.1.2
 
 ### Patch Changes
