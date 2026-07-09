@@ -37,6 +37,7 @@ jobs:
       # Opens a "Version Packages" PR when changesets exist; once that PR is
       # merged (versions bumped), the next run publishes to npm.
       - name: Create Release PR or Publish
+        id: changesets
         uses: changesets/action@v1
         with:
           version: pnpm run version
@@ -45,3 +46,30 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      # Mirror the plugin to ClawHub from the SAME freshly-built dist/ that was
+      # just published to npm, so the two registries stay on the exact same
+      # version. Runs only when changesets actually published openclaw-amem —
+      # skipped on the runs that merely open/update the Version PR.
+      - name: Publish plugin to ClawHub
+        if: steps.changesets.outputs.published == 'true' && contains(steps.changesets.outputs.publishedPackages, 'openclaw-amem')
+        working-directory: packages/openclaw-amem
+        run: |
+          npm i -g clawhub
+          clawhub login --token "$CLAWHUB_TOKEN"
+          pnpm pack --pack-destination "$RUNNER_TEMP"
+          rm -rf "$RUNNER_TEMP/clawhub-pkg" && mkdir -p "$RUNNER_TEMP/clawhub-pkg"
+          tar -xzf "$RUNNER_TEMP"/openclaw-amem-*.tgz -C "$RUNNER_TEMP/clawhub-pkg"
+          # Feed the just-released CHANGELOG.md section (changesets writes it) as
+          # the release notes so npm and ClawHub show the same changelog.
+          NOTE=$(awk '/^## /{n++} n==1{print} n==2{exit}' CHANGELOG.md)
+          # Code plugins require source attribution; use the exact release commit.
+          clawhub --no-input package publish "$RUNNER_TEMP/clawhub-pkg/package" \
+            --family code-plugin --owner heichaowo \
+            --source-repo "$GITHUB_REPOSITORY" \
+            --source-commit "$GITHUB_SHA" \
+            --source-ref "$GITHUB_REF_NAME" \
+            --source-path packages/openclaw-amem \
+            --changelog "$NOTE"
+        env:
+          CLAWHUB_TOKEN: ${{ secrets.CLAWHUB_TOKEN }}
