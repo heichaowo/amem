@@ -11,6 +11,7 @@ concurrency:
 permissions:
   contents: write
   pull-requests: write
+  id-token: write # npm provenance (sigstore attestation)
 
 jobs:
   release:
@@ -46,6 +47,8 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          # Publish npm packages with provenance (needs id-token: write above).
+          NPM_CONFIG_PROVENANCE: 'true'
 
       # Mirror the plugin to ClawHub from the SAME freshly-built dist/ that was
       # just published to npm, so the two registries stay on the exact same
