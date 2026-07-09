@@ -86,7 +86,7 @@ importers:
       '@eslint/js':
         specifier: ^10.0.1
         version: 10.0.1(eslint@10.6.0)
-      '@heichaowo/amem-core':
+      amem-core:
         specifier: workspace:*
         version: link:../amem-core
       eslint:
