@@ -14,7 +14,7 @@ hero:
       link: /guide/introduction
     - theme: alt
       text: View on GitHub
-      link: https://github.com/heichaowo/openclaw-amem
+      link: https://github.com/heichaowo/amem
 
 features:
   - icon: 🔄

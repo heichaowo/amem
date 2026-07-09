@@ -7,11 +7,11 @@ import { v4 as uuidv4 } from 'uuid'
 import { createHash } from 'crypto'
 import * as fs from 'fs'
 import * as path from 'path'
-import * as os from 'os'
 import { encode, cosineSimilarity } from './embedding.js'
 import { createStorageContext, type MemoryNote, type StorageContext } from './storage.js'
 import { llmConstructNote, llmShouldLink, llmEvolveNote, llmShouldMerge, llmEvolutionJudge } from './llm.js'
 import { shouldRunEvolution } from './evo-counter.js'
+import { getDataDir } from './config.js'
 import { Jieba } from '@node-rs/jieba'
 
 // ── BM25 helpers ──────────────────────────────────────────────────────────────
@@ -775,7 +775,7 @@ export async function consolidateMemories(agentId: string, logger?: any, storage
 
   // Helper: append log to log file
   function logMergeToFile(keepId: string, dropId: string, mergedContent: string) {
-    const logDir = path.join(os.homedir(), '.openclaw', 'logs')
+    const logDir = path.join(getDataDir(), 'logs')
     const logFile = path.join(logDir, 'amem-consolidate.log')
     const timestamp = new Date().toISOString()
     const logMsg = `[${timestamp}] Consolidated: KeepNote ${keepId} and DropNote ${dropId}. Merged length: ${mergedContent.length} chars.\n`

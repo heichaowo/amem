@@ -5,14 +5,16 @@
  * behind an EVO_THRESHOLD counter. This reduces LLM calls dramatically
  * in high-frequency write scenarios.
  *
- * Counter persisted to ~/.openclaw/amem_evo_cnt.json.
+ * Counter persisted to <dataDir>/amem_evo_cnt.json (dataDir via config, default ~/.amem).
  */
 
 import * as fs from 'fs'
 import * as path from 'path'
-import * as os from 'os'
+import { getDataDir } from './config.js'
 
-const COUNTER_FILE = process.env.AMEM_EVO_COUNTER_PATH || path.join(os.homedir(), '.openclaw', 'amem_evo_cnt.json')
+function counterFile(): string {
+  return process.env.AMEM_EVO_COUNTER_PATH || path.join(getDataDir(), 'amem_evo_cnt.json')
+}
 const EVO_THRESHOLD = 20
 
 interface CounterData {
@@ -22,7 +24,7 @@ interface CounterData {
 
 export function getEvoCount(): number {
   try {
-    const data = JSON.parse(fs.readFileSync(COUNTER_FILE, 'utf-8')) as CounterData
+    const data = JSON.parse(fs.readFileSync(counterFile(), 'utf-8')) as CounterData
     return data.count || 0
   } catch {
     return 0
@@ -31,7 +33,7 @@ export function getEvoCount(): number {
 
 export function incrementEvoCount(): number {
   const count = getEvoCount() + 1
-  fs.writeFileSync(COUNTER_FILE, JSON.stringify({ count, updatedAt: new Date().toISOString() }))
+  fs.writeFileSync(counterFile(), JSON.stringify({ count, updatedAt: new Date().toISOString() }))
   return count
 }
 

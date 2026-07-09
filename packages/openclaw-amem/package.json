@@ -1,0 +1,77 @@
+{
+  "name": "openclaw-amem",
+  "version": "1.0.2",
+  "description": "A-MEM agentic memory backend for OpenClaw — TypeScript rewrite",
+  "main": "dist/index.js",
+  "openclaw": {
+    "extensions": [
+      "./dist/index.js"
+    ],
+    "compat": {
+      "pluginApi": ">=2026.3.24"
+    },
+    "build": {
+      "openclawVersion": "2026.6.9"
+    }
+  },
+  "scripts": {
+    "build": "tsup src/index.ts --format cjs --out-dir dist",
+    "dev": "tsup src/index.ts --format cjs --watch",
+    "lint": "eslint src",
+    "format": "prettier --check \"src/**/*.ts\"",
+    "format:fix": "prettier --write \"src/**/*.ts\"",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "check": "npm run format && npm run lint && npm run test"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.52.0",
+    "@huggingface/transformers": "^3.5.0",
+    "@node-rs/jieba": "^2.0.1",
+    "@qdrant/js-client-rest": "^1.18.0",
+    "@types/uuid": "^10.0.0",
+    "uuid": "^14.0.0"
+  },
+  "devDependencies": {
+    "amem-core": "workspace:*",
+    "@eslint/js": "^10.0.1",
+    "eslint": "^10.4.1",
+    "prettier": "^3.8.3",
+    "tsup": "^8.4.0",
+    "tsx": "^4.21.0",
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.60.1",
+    "vitest": "^4.1.8"
+  },
+  "optionalDependencies": {
+    "@node-rs/jieba-darwin-arm64": "^2.0.1",
+    "@node-rs/jieba-linux-x64-gnu": "^2.0.1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/heichaowo/amem.git",
+    "directory": "packages/openclaw-amem"
+  },
+  "homepage": "https://amem.owo.lc",
+  "bugs": {
+    "url": "https://github.com/heichaowo/amem/issues"
+  },
+  "keywords": [
+    "openclaw",
+    "openclaw-plugin",
+    "a-mem",
+    "agent-memory",
+    "agentic-memory",
+    "memory-plugin",
+    "qdrant",
+    "vector-memory",
+    "llm-memory",
+    "transformers"
+  ],
+  "files": [
+    "dist/",
+    "openclaw.plugin.json",
+    "README.md",
+    "LICENSE"
+  ]
+}
