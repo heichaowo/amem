@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="https://amem.owo.lc/logo.webp" width="120" alt="amem Logo" />
+  <img src="https://raw.githubusercontent.com/heichaowo/amem/main/docs/public/logo.webp" width="120" alt="amem Logo" />
 </p>
 
 # amem
