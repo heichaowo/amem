@@ -104,6 +104,16 @@ Once installed, the plugin exposes five tools to the agent:
 | `memory_consolidate` | Manually trigger category-based semantic dedup + link cascading. |
 | `memory_quality_scan` | Scan for low-quality/expired/conflicting notes → Obsidian-compatible review batch file. |
 
+## Security & data flow
+
+A memory plugin's job is to read configuration from the environment and send memory data to backends **you** control, so registry static scanners flag its `env` + `network` pattern (e.g. ClawHub's `suspicious.env_credential_access`). This is structurally expected for any configurable memory/LLM plugin — the audit outcome is **advisory (`Review`), not `Malicious`**, and VirusTotal reports the bundle clean.
+
+What it actually does — all of it declared in [`openclaw.plugin.json`](openclaw.plugin.json):
+
+- **Environment variables it reads** (its configuration surface, supplied by you): `AMEM_LLM_API_KEY`, `AMEM_LLM_BASE_URL`, `AMEM_LLM_MODEL`, `AMEM_COLLECTION`, `AMEM_DATA_DIR`, `AMEM_EVO_COUNTER_PATH`, `AMEM_REVIEW_DIR`, `AMEM_PROMPT_LOCALE`. No credential is bundled, hardcoded, or logged.
+- **Network destinations**: only your **local Qdrant** (`http://localhost:6333`) and your configured **LLM endpoint** (Anthropic by default, or `AMEM_LLM_BASE_URL`). It sends memory text/embeddings there to store and evolve notes — its stated purpose. It does not phone home.
+- **Conversation content** is processed for memory only when you set `hooks.allowConversationAccess: true`. Keep Qdrant and review-output paths scoped to locations you control.
+
 ## Development
 
 This package is part of the **[amem monorepo](../../)**. From the repo root:

@@ -21,6 +21,37 @@
       "memory_quality_scan"
     ]
   },
+  "setup": {
+    "providers": [
+      {
+        "id": "amem",
+        "envVars": [
+          "AMEM_LLM_API_KEY",
+          "AMEM_LLM_BASE_URL",
+          "AMEM_LLM_MODEL",
+          "AMEM_COLLECTION",
+          "AMEM_DATA_DIR",
+          "AMEM_EVO_COUNTER_PATH",
+          "AMEM_REVIEW_DIR",
+          "AMEM_PROMPT_LOCALE"
+        ]
+      }
+    ]
+  },
+  "providerEndpoints": [
+    {
+      "endpointClass": "qdrant",
+      "hosts": ["localhost"],
+      "baseUrls": ["http://localhost:6333"],
+      "note": "Local Qdrant vector store for memory embeddings."
+    },
+    {
+      "endpointClass": "anthropic",
+      "hosts": ["api.anthropic.com"],
+      "hostSuffixes": [".anthropic.com"],
+      "note": "LLM for note construction / link generation / evolution; override the base URL via AMEM_LLM_BASE_URL."
+    }
+  ],
   "configSchema": {
     "type": "object",
     "additionalProperties": false,
