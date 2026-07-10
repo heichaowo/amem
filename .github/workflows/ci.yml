@@ -13,6 +13,9 @@ concurrency:
 jobs:
   check:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        node: [22, 24, 26]
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -23,7 +26,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 24
+          node-version: ${{ matrix.node }}
           cache: pnpm
 
       - name: Install dependencies
@@ -95,3 +98,32 @@ jobs:
 
       - name: Integration tests
         run: pnpm test:integration
+
+  changeset-check:
+    # Skip the changesets bot's own "Version Packages" PR — it consumes the
+    # changesets and only bumps versions, so it has none by design.
+    if: github.event_name == 'pull_request' && github.head_ref != 'changeset-release/main'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # Fails the PR if a publishable package changed without a changeset.
+      # Private packages (amem-core) and non-package changes (docs, CI) are
+      # ignored by changesets, so infra-only PRs still pass.
+      - name: Require a changeset
+        run: pnpm changeset status --since=origin/${{ github.base_ref }}
