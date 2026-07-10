@@ -18,6 +18,7 @@
   "scripts": {
     "build": "tsup src/index.ts --format cjs --out-dir dist",
     "dev": "tsup src/index.ts --format cjs --watch",
+    "typecheck": "tsc --noEmit",
     "lint": "eslint src",
     "format": "prettier --check \"src/**/*.ts\"",
     "format:fix": "prettier --write \"src/**/*.ts\"",
