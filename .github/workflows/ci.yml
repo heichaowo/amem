@@ -126,9 +126,12 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      # Fails the PR if a publishable package changed without a changeset.
-      # Private packages (amem-core) and non-package changes (docs, CI) are
-      # ignored by changesets, so infra-only PRs still pass.
+      # Fails the PR if any workspace package changed without a changeset —
+      # including the private amem-core, because it is bundled into the
+      # published plugin, so engine changes really do ship. When a change
+      # genuinely needs no release, say so explicitly with
+      # `pnpm changeset add --empty`. Changes outside a package (docs, CI)
+      # are not flagged.
       - name: Require a changeset
         run: pnpm changeset status --since=origin/${{ github.base_ref }}
 
