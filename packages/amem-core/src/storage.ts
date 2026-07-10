@@ -97,6 +97,19 @@ async function qdrant(method: string, path: string, body?: unknown): Promise<unk
   return data.result
 }
 
+/**
+ * Ask Qdrant whether it can serve, right now.
+ *
+ * `ensureCollection()` cannot answer this: it latches `_collectionReady` and
+ * short-circuits on every later call, so once it has succeeded it keeps
+ * reporting success long after Qdrant has gone away. `/readyz` answers in plain
+ * text, so it deliberately bypasses the JSON-parsing `qdrant()` helper above.
+ */
+export async function pingQdrant(): Promise<void> {
+  const res = await fetch(`${QDRANT_URL}/readyz`)
+  if (!res.ok) throw new Error(`Qdrant GET /readyz failed: ${res.status}`)
+}
+
 // ── Collection init ───────────────────────────────────────────────────────────
 let _collectionReady = false
 /** Track ready state per named collection (for mode B isolated collections). */

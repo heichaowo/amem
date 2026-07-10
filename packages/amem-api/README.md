@@ -4,18 +4,36 @@
 
 One process owns Qdrant, the embedding model, evolution and consolidation. Every consumer — the [`openclaw-amem`](../openclaw-amem) plugin in remote mode, a game brain — talks to it over HTTP or MCP rather than importing [`amem-core`](../amem-core) and opening its own Qdrant connection. That is what makes the single-writer guarantee **structural** rather than a convention.
 
-> ⚠️ **Not published, and not finished.** This package is `private` while its API settles. It is scaffolding today: the memory routes, the MCP bridge and the auth/config layer are still landing.
+> ⚠️ **Not published, and not finished.** This package is `private` while its API settles. The MCP bridge and the auth/config layer are still landing.
 
 ## Status
 
 | | |
 | --- | --- |
-| `GET /healthz` | ✅ liveness |
-| memory routes (`/v1/memories`, …) | ⏳ |
+| `GET /healthz` | ✅ readiness |
+| memory routes (`/v1/memories`, …) | ✅ |
 | MCP bridge (stdio) | ⏳ |
 | auth + non-localhost binding | ⏳ |
 
+## API
+
+| | | |
+| --- | --- | --- |
+| `GET` | `/healthz` | `200` when Qdrant answers **and** the model is resident; `503` otherwise |
+| `POST` | `/v1/memories` | full pipeline — LLM note construction, links, evolution → `201 {id}` |
+| `POST` | `/v1/memories/episodic` | cheap append-only write, no LLM → `201 {id}` |
+| `POST` | `/v1/memories/search` | hybrid BM25 + dense retrieval → `200 {results}` |
+| `GET` | `/v1/memories/count` | `200 {count}` |
+| `POST` | `/v1/maintenance/consolidate` | offline distillation → `200 {merged}` |
+| `POST` | `/v1/maintenance/quality-scan` | `200 {items: [{noteId, reasons}]}` |
+
+Every write and search body is schema-validated; an undeclared field is refused rather than silently dropped. Failures answer with `{statusCode, error, detail?}` — `400` malformed request, `422` the quality gate refused the content, `503` Qdrant unreachable, `500` ours. `detail` is present only on `400` and `422`: a `5xx` message stays in the log.
+
+Bodies take an optional `agentId` (default `main`); writes take an optional `scope` of `private` (default) or `shared`.
+
 ## Run it
+
+Needs Qdrant on `localhost:6333`. Startup loads the embedding model **before** the port opens, so the first request is not the one that pays for the download — and so `/healthz` means something the moment it answers.
 
 ```bash
 pnpm --filter @heichaowo/amem-api build
