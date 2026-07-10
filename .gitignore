@@ -26,9 +26,10 @@ Thumbs.db
 _bmad/
 _bmad-output/
 
-# ── Directories purged from history (guard against re-creation) ──────────────
-scripts/
-test/
+# ── Root dirs purged from history (guard against re-creation; anchored to
+#    repo root so package-level test/ and scripts/ dirs are NOT ignored) ───────
+/scripts/
+/test/
 
 # ── Files that should never be committed ─────────────────────────────────────
 acceptance-test.ts

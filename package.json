@@ -9,6 +9,8 @@
     "build": "pnpm -r build",
     "typecheck": "pnpm -r typecheck",
     "test": "pnpm -r test",
+    "test:unit": "pnpm -r --if-present test:unit",
+    "test:integration": "pnpm -r --if-present test:integration",
     "lint": "pnpm -r lint",
     "changeset": "changeset",
     "version": "changeset version && node tools/sync-plugin-version.mjs",

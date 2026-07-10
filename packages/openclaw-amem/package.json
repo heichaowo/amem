@@ -42,7 +42,7 @@
     "tsx": "^4.21.0",
     "typescript": "^5.9.3",
     "typescript-eslint": "^8.60.1",
-    "vitest": "^4.1.8"
+    "vitest": "^3.2.4"
   },
   "optionalDependencies": {
     "@node-rs/jieba-darwin-arm64": "^2.0.1",

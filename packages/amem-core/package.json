@@ -24,7 +24,9 @@
     "build": "tsup",
     "dev": "tsup --watch",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "test:unit": "vitest run test/unit",
+    "test:integration": "vitest run test/integration --passWithNoTests"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.52.0",
@@ -37,7 +39,7 @@
     "@types/uuid": "^10.0.0",
     "tsup": "^8.4.0",
     "typescript": "^5.9.3",
-    "vitest": "^4.1.8"
+    "vitest": "^3.2.4"
   },
   "optionalDependencies": {
     "@node-rs/jieba-darwin-arm64": "^2.0.1",
