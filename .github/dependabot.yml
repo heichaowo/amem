@@ -6,6 +6,16 @@ updates:
     schedule:
       interval: weekly
     open-pull-requests-limit: 5
+    # Only propose versions that have been public for a while. This clears pnpm
+    # 11's 24h minimumReleaseAge supply-chain gate — which otherwise fails CI on
+    # a freshly published package — and gives a compromised release time to be
+    # spotted. Cooldown applies to version updates only: security updates are
+    # never delayed by it.
+    cooldown:
+      default-days: 7
+      semver-major-days: 30
+      semver-minor-days: 7
+      semver-patch-days: 3
     groups:
       # Only batch routine dev tooling (minor/patch). Runtime (production) deps
       # and every MAJOR bump get an individual PR — so a breaking upgrade (e.g.
@@ -20,6 +30,9 @@ updates:
     directory: "/"
     schedule:
       interval: weekly
+    # A freshly published action tag is a supply-chain risk too; let it soak.
+    cooldown:
+      default-days: 7
     groups:
       github-actions:
         patterns: ["*"]
