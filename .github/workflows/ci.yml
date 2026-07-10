@@ -100,9 +100,13 @@ jobs:
         run: pnpm test:integration
 
   changeset-check:
-    # Skip the changesets bot's own "Version Packages" PR — it consumes the
-    # changesets and only bumps versions, so it has none by design.
-    if: github.event_name == 'pull_request' && github.head_ref != 'changeset-release/main'
+    # Skip PRs that never carry a changeset by design: the changesets bot's
+    # own "Version Packages" PR (it consumes them), and Dependabot bumps
+    # (a changeset is added by the maintainer when the bump is released).
+    if: >-
+      github.event_name == 'pull_request'
+      && github.head_ref != 'changeset-release/main'
+      && github.actor != 'dependabot[bot]'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout

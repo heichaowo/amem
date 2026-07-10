@@ -7,12 +7,17 @@ updates:
       interval: weekly
     open-pull-requests-limit: 5
     groups:
-      # One PR per week for routine dev-tooling bumps instead of many.
+      # Only batch dev tooling. Runtime (production) deps get an individual PR
+      # each — so a subtle runtime regression is isolated to one dependency and
+      # trivial to bisect/revert. Isolation > convenience for what actually ships.
       dev-dependencies:
         dependency-type: development
 
-  # GitHub Actions used in the workflows.
+  # GitHub Actions used in the workflows — one grouped PR.
   - package-ecosystem: github-actions
     directory: "/"
     schedule:
       interval: weekly
+    groups:
+      github-actions:
+        patterns: ["*"]
