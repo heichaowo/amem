@@ -6,8 +6,8 @@ const require = createRequire(import.meta.url)
 const pkg = require('../../packages/openclaw-amem/package.json')
 
 export default defineConfig({
-  title: 'openclaw-amem',
-  description: 'A-MEM agentic memory backend for OpenClaw — dynamic memory networks, automatic link generation, memory evolution, and hybrid retrieval.',
+  title: 'amem',
+  description: 'amem — an open-source agentic-memory stack for LLM agents. Memories evolve, not just accumulate: graph linking, hybrid retrieval, and LLM-driven evolution. TypeScript, local embeddings, no Python.',
   base: '/',
 
   head: [
@@ -16,44 +16,44 @@ export default defineConfig({
 
   themeConfig: {
     logo: '/logo.webp',
-    siteTitle: 'openclaw-amem',
+    siteTitle: 'amem',
 
     nav: [
       { text: 'Guide', link: '/guide/introduction' },
-      { text: 'Reference', link: '/reference/configuration' },
+      { text: 'OpenClaw Plugin', link: '/guide/installation' },
       { text: `v${pkg.version}`, link: 'https://github.com/heichaowo/amem/releases' },
     ],
 
     sidebar: [
       {
-        text: 'Getting Started',
+        text: 'Overview',
         items: [
           { text: 'Introduction', link: '/guide/introduction' },
+        ],
+      },
+      {
+        text: 'Concepts',
+        items: [
+          { text: 'How A-MEM Works', link: '/guide/how-it-works' },
+          { text: 'Memory Evolution & Quality', link: '/guide/evolution' },
+          { text: 'Agent Isolation', link: '/guide/agent-isolation' },
+          { text: 'A-MEM vs Traditional RAG', link: '/guide/comparison' },
+        ],
+      },
+      {
+        text: 'OpenClaw Plugin',
+        items: [
           { text: 'Installation', link: '/guide/installation' },
           { text: 'Quick Start', link: '/guide/quick-start' },
-        ],
-      },
-      {
-        text: 'Architecture',
-        items: [
-          { text: 'How It Works', link: '/guide/how-it-works' },
-          { text: 'A-MEM vs Traditional RAG', link: '/guide/comparison' },
-          { text: 'Evolution & Quality', link: '/guide/evolution' },
-          { text: 'Agent Isolation', link: '/guide/agent-isolation' },
-        ],
-      },
-      {
-        text: 'Reference',
-        items: [
           { text: 'Configuration', link: '/reference/configuration' },
           { text: 'Tools', link: '/reference/tools' },
           { text: 'Smoke Test Results', link: '/reference/smoketest' },
         ],
       },
       {
-        text: 'Development',
+        text: 'Contributing',
         items: [
-          { text: 'Contributing', link: '/guide/contributing' },
+          { text: 'Contributing Guide', link: '/guide/contributing' },
         ],
       },
     ],
