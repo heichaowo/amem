@@ -7,11 +7,13 @@ updates:
       interval: weekly
     open-pull-requests-limit: 5
     groups:
-      # Only batch dev tooling. Runtime (production) deps get an individual PR
-      # each — so a subtle runtime regression is isolated to one dependency and
-      # trivial to bisect/revert. Isolation > convenience for what actually ships.
+      # Only batch routine dev tooling (minor/patch). Runtime (production) deps
+      # and every MAJOR bump get an individual PR — so a breaking upgrade (e.g.
+      # typescript 5 -> 7) is reviewed on its own instead of riding along with
+      # harmless patches. Isolation > convenience for anything that can break.
       dev-dependencies:
         dependency-type: development
+        update-types: [minor, patch]
 
   # GitHub Actions used in the workflows — one grouped PR.
   - package-ecosystem: github-actions
