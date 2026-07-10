@@ -384,6 +384,72 @@ export async function addMemory(
   return note.id
 }
 
+// ── addEpisodic ───────────────────────────────────────────────────────────────
+/**
+ * The cheap write path: quality gate → embed the raw content → store.
+ *
+ * Deliberately skips LLM note construction, similarity dedup, link generation
+ * and evolution, so a real-time caller (a game brain logging events tick by
+ * tick) never pays for an LLM round-trip. Cost is one embed + one upsert.
+ *
+ * Episodic notes are an **append-only, faithful event log**: the same content
+ * written twice is two events, so there is no hash or vector dedup here.
+ * Evolution rewrites a note's context over time — precisely what you do not
+ * want for "remember the time the ender dragon killed us". The offline
+ * consolidation pass distils these raw events into long-term, linked notes.
+ */
+export async function addEpisodic(
+  content: string,
+  agentId = 'main',
+  opts?: {
+    scope?: 'private' | 'shared'
+    storageCtx?: StorageContext
+  }
+): Promise<string> {
+  const scope = opts?.scope ?? 'private'
+  const ctx = opts?.storageCtx ?? defaultCtx()
+
+  const quality = checkQuality(content)
+  if (!quality.ok) {
+    throw new Error(`[quality] 写入拒绝: ${quality.reason}`)
+  }
+
+  // No note construction, so keywords/tags/context/topics stay empty and the
+  // embedding covers the raw content alone.
+  const embedding = await encode(content)
+  const now = new Date().toISOString()
+
+  const note: MemoryNote = {
+    id: uuidv4(),
+    content,
+    timestamp: now,
+    keywords: [],
+    tags: [],
+    context: '',
+    embedding,
+    links: [],
+    agent_id: scope === 'shared' ? 'shared' : agentId,
+    hash: createHash('md5').update(content).digest('hex'),
+    retrieval_count: 0,
+    last_accessed: now,
+    evolution_history: [],
+    category: 'General',
+    is_active: true,
+    note_type: 'memory',
+    topics: [],
+    pending_merge: false,
+    conflict: false,
+    ephemeral: quality.ephemeral,
+    low_quality: false,
+    owner: agentId,
+    readers: scope === 'shared' ? ['*'] : [agentId],
+    writers: [agentId],
+  }
+
+  await ctx.addNote(note)
+  return note.id
+}
+
 // ── searchMemory ──────────────────────────────────────────────────────────────
 export interface SearchResult {
   id: string
