@@ -1,7 +1,7 @@
 {
   "name": "openclaw-amem",
   "version": "1.1.3",
-  "description": "A-MEM agentic memory backend for OpenClaw — TypeScript rewrite",
+  "description": "OpenClaw memory plugin implementing A-MEM — memories evolve, not just accumulate. Graph linking, hybrid retrieval, LLM-driven evolution. No Python.",
   "license": "MIT",
   "main": "dist/index.js",
   "openclaw": {
