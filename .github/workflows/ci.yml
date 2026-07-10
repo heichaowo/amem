@@ -131,3 +131,22 @@ jobs:
       # ignored by changesets, so infra-only PRs still pass.
       - name: Require a changeset
         run: pnpm changeset status --since=origin/${{ github.base_ref }}
+
+  # The one status check to require in branch protection. It fails if any job
+  # above failed or was cancelled, and stays green when a job legitimately skips
+  # (changeset-check on the Version PR or a Dependabot PR). Because it is a
+  # single stable name, changing the Node matrix never breaks the ruleset.
+  ci-ok:
+    if: always()
+    needs: [check, secret-scan, integration, changeset-check]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify every CI job succeeded or was skipped
+        run: |
+          results="${{ join(needs.*.result, ',') }}"
+          echo "job results: $results"
+          if echo "$results" | grep -qE '(^|,)(failure|cancelled)(,|$)'; then
+            echo "::error::a required CI job did not succeed"
+            exit 1
+          fi
+          echo "all CI jobs succeeded or were skipped"
