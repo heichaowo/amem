@@ -1,0 +1,18 @@
+version: 2
+updates:
+  # npm / pnpm workspace dependencies (root lockfile covers all packages).
+  - package-ecosystem: npm
+    directory: "/"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      # One PR per week for routine dev-tooling bumps instead of many.
+      dev-dependencies:
+        dependency-type: development
+
+  # GitHub Actions used in the workflows.
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
