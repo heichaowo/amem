@@ -2,9 +2,9 @@
 layout: home
 
 hero:
-  name: openclaw-amem
-  text: Agentic Memory for OpenClaw
-  tagline: Memories evolve, not just accumulate — dynamic graph linking, hybrid retrieval, and LLM-driven evolution. Local embeddings, no Python required.
+  name: amem
+  text: Agentic memory that evolves
+  tagline: An open-source agentic-memory stack for LLM agents — memories evolve, not just accumulate. Graph linking, hybrid retrieval, LLM-driven evolution. TypeScript, local embeddings, no Python.
   image:
     src: /logo.webp
     alt: A-MEM Logo
@@ -43,7 +43,9 @@ features:
     details: Each agent operates in its own private namespace — memories written by main are invisible to dev by default. An explicit shared scope plus owner/readers/writers fields on every note control cross-agent access.
 ---
 
-## Install in 30 seconds
+## Install the OpenClaw plugin
+
+The fastest way to try amem today is the **openclaw-amem** plugin — the `amem-core` engine is bundled inside, so there is nothing else to install.
 
 ::: code-group
 
@@ -61,13 +63,13 @@ Point OpenClaw's `memory` slot at `openclaw-amem` and your agent remembers acros
 
 ## The amem stack
 
-`openclaw-amem` is one package in the **amem** monorepo — a memory stack you can adopt piece by piece.
+amem is a monorepo you can adopt one piece at a time.
 
-| Package | What it is | Where |
+| Package | Role | Status |
 | --- | --- | --- |
-| **openclaw-amem** | The OpenClaw memory-slot plugin — the subject of this documentation. | [npm](https://www.npmjs.com/package/openclaw-amem) · ClawHub |
-| **amem-core** | Framework-agnostic **A-MEM engine** — note construction, evolution, hybrid retrieval. Qdrant + Transformers.js. | bundled into the plugin |
-| **amem-api** | Single-writer memory **service** (HTTP + MCP) so many processes share one store. | *coming soon* |
+| **amem-core** | **Engine** — note construction, evolution, hybrid retrieval. Framework-agnostic. | bundled |
+| **openclaw-amem** | **OpenClaw Plugin** — drops A-MEM into OpenClaw's `memory` slot. | shipping · [npm](https://www.npmjs.com/package/openclaw-amem) · ClawHub |
+| **amem-api** | **Server** — single-writer HTTP + MCP service so many processes share one store. | *coming soon* |
 
 ## Grounded in research
 
