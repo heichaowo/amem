@@ -6,6 +6,10 @@ on:
   pull_request:
     branches: [main]
 
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   check:
     runs-on: ubuntu-latest
@@ -34,8 +38,13 @@ jobs:
       - name: Typecheck
         run: pnpm -r typecheck
 
+      - name: Unit tests
+        run: pnpm test:unit
+
       - name: Build
         run: pnpm -r build
 
-  # Note: integration tests (`pnpm -r test`) need a running Qdrant (:6333) and
-  # ANTHROPIC_API_KEY, so they run locally / in a dedicated job, not in basic CI.
+  # Unit tests (`pnpm test:unit`) run in the check job above — no external
+  # services needed. Integration tests (`pnpm test:integration`) need a running
+  # Qdrant (:6333) + a mock LLM; they get a dedicated service-container job
+  # (Story-CI-1 T2, not yet added).

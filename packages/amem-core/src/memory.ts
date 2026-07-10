@@ -27,10 +27,10 @@ function getJieba(): Jieba {
  * Tokenize text for BM25 indexing.
  * Story 21: Chinese text is segmented with Jieba (HMM mode) before indexing.
  * Non-Chinese text falls back to whitespace/word-boundary splitting.
- * Mixed text (e.g. "文静TTS参数") is handled correctly — Jieba preserves
+ * Mixed text (e.g. "检索Qdrant结果") is handled correctly — Jieba preserves
  * ASCII tokens as-is while segmenting CJK spans.
  */
-function simpleTokenize(text: string): string[] {
+export function simpleTokenize(text: string): string[] {
   const hasChinese = /[\u4e00-\u9fff]/.test(text)
   if (hasChinese) {
     // Jieba cut with HMM=true for unknown word recognition
@@ -42,14 +42,14 @@ function simpleTokenize(text: string): string[] {
   return Array.from(text.toLowerCase().matchAll(/[\w]+/g)).map((m) => m[0])
 }
 
-interface BM25State {
+export interface BM25State {
   ids: string[]
   corpus: string[][]
   idf: Map<string, number>
   avgdl: number
 }
 
-function buildBM25(notes: MemoryNote[]): BM25State {
+export function buildBM25(notes: MemoryNote[]): BM25State {
   const ids = notes.map((n) => n.id)
   const corpus = notes.map((n) => {
     const text = [n.content, ...n.keywords, ...n.tags].join(' ')
@@ -71,7 +71,7 @@ function buildBM25(notes: MemoryNote[]): BM25State {
   return { ids, corpus, idf, avgdl }
 }
 
-function bm25Score(state: BM25State, queryTokens: string[], k1 = 1.5, b = 0.75): [string, number][] {
+export function bm25Score(state: BM25State, queryTokens: string[], k1 = 1.5, b = 0.75): [string, number][] {
   const scores: [string, number][] = state.ids.map((id, i) => {
     const doc = state.corpus[i]
     const dl = doc.length
@@ -91,7 +91,7 @@ function bm25Score(state: BM25State, queryTokens: string[], k1 = 1.5, b = 0.75):
 }
 
 // ── RRF merge ─────────────────────────────────────────────────────────────────
-function rrfMerge(embIds: string[], bm25Ids: string[], k = 60): [string, number][] {
+export function rrfMerge(embIds: string[], bm25Ids: string[], k = 60): [string, number][] {
   const scores = new Map<string, number>()
   embIds.forEach((id, rank) => scores.set(id, (scores.get(id) ?? 0) + 1 / (k + rank + 1)))
   bm25Ids.forEach((id, rank) => scores.set(id, (scores.get(id) ?? 0) + 1 / (k + rank + 1)))
