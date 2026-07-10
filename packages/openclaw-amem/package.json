@@ -35,8 +35,9 @@
     "uuid": "^14.0.0"
   },
   "devDependencies": {
-    "amem-core": "workspace:*",
     "@eslint/js": "^10.0.1",
+    "@types/node": "^26.1.1",
+    "amem-core": "workspace:*",
     "eslint": "^10.4.1",
     "prettier": "^3.8.3",
     "tsup": "^8.4.0",
