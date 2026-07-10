@@ -44,6 +44,19 @@ jobs:
       - name: Build
         run: pnpm -r build
 
+  secret-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Credential scan (gitleaks)
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
   # Unit tests (`pnpm test:unit`) run in the check job above — no external
   # services needed. Integration tests (`pnpm test:integration`) need a running
   # Qdrant (:6333) + a mock LLM; they get a dedicated service-container job
