@@ -27,7 +27,7 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.110.0",
-    "@huggingface/transformers": "^3.5.0",
+    "@huggingface/transformers": "^4.2.0",
     "@node-rs/jieba": "^2.0.1",
     "@qdrant/js-client-rest": "^1.18.0",
     "@types/uuid": "^10.0.0",
