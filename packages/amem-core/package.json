@@ -39,7 +39,7 @@
     "@types/uuid": "^10.0.0",
     "tsup": "^8.4.0",
     "typescript": "^5.9.3",
-    "vitest": "^3.2.4"
+    "vitest": "^4.1.10"
   },
   "optionalDependencies": {
     "@node-rs/jieba-darwin-arm64": "^2.0.1",
