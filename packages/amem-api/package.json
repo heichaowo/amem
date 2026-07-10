@@ -1,0 +1,52 @@
+{
+  "name": "@heichaowo/amem-api",
+  "version": "0.1.0",
+  "private": true,
+  "description": "amem-api — the single-writer memory service for the amem stack (HTTP + MCP).",
+  "license": "MIT",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "bin": {
+    "amem-api": "./dist/cli.js"
+  },
+  "files": [
+    "dist/",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "start": "node dist/cli.js",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:unit": "vitest run test/unit",
+    "test:integration": "vitest run test/integration --passWithNoTests"
+  },
+  "dependencies": {
+    "fastify": "^5.10.0"
+  },
+  "devDependencies": {
+    "tsup": "^8.4.0",
+    "typescript": "^5.9.3",
+    "vitest": "^4.1.10"
+  },
+  "keywords": [
+    "amem",
+    "agentic-memory",
+    "memory-service",
+    "qdrant",
+    "fastify",
+    "mcp"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/heichaowo/amem.git",
+    "directory": "packages/amem-api"
+  },
+  "homepage": "https://amem.owo.lc",
+  "bugs": {
+    "url": "https://github.com/heichaowo/amem/issues"
+  }
+}
