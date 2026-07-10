@@ -57,7 +57,41 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-  # Unit tests (`pnpm test:unit`) run in the check job above — no external
-  # services needed. Integration tests (`pnpm test:integration`) need a running
-  # Qdrant (:6333) + a mock LLM; they get a dedicated service-container job
-  # (Story-CI-1 T2, not yet added).
+  # Integration tests drive the real memory pipeline against a Qdrant service
+  # container, with the LLM and embeddings mocked (deterministic, no API calls,
+  # no model download). Unit tests run in the check job above.
+  integration:
+    runs-on: ubuntu-latest
+    services:
+      qdrant:
+        image: qdrant/qdrant
+        ports:
+          - 6333:6333
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Wait for Qdrant
+        run: |
+          for i in $(seq 1 30); do
+            if curl -sf http://localhost:6333/readyz >/dev/null 2>&1; then
+              echo "Qdrant is ready"; exit 0
+            fi
+            sleep 1
+          done
+          echo "Qdrant did not become ready in time"; exit 1
+
+      - name: Integration tests
+        run: pnpm test:integration
