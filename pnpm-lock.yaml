@@ -64,6 +64,9 @@ importers:
         specifier: ^14.0.0
         version: 14.0.1
     devDependencies:
+      '@types/node':
+        specifier: ^26.1.1
+        version: 26.1.1
       '@types/uuid':
         specifier: ^11.0.0
         version: 11.0.0
