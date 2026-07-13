@@ -86,6 +86,23 @@ export async function encode(text: string): Promise<number[]> {
 }
 
 /**
+ * Load the model now rather than on the first encode(). A long-lived service
+ * pays the download at startup, not on a user's first write.
+ */
+export async function loadModel(): Promise<void> {
+  await getExtractor()
+}
+
+/**
+ * Whether the model is resident. Synchronous and I/O-free — unlike encode() it
+ * can never trigger the several-hundred-megabyte download, so a health check is
+ * free to poll it.
+ */
+export function isModelLoaded(): boolean {
+  return extractor !== null
+}
+
+/**
  * Cosine similarity between two normalized vectors (already L2-normalized → just dot product)
  */
 export function cosineSimilarity(a: number[], b: number[]): number {
