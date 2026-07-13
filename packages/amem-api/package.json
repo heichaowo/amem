@@ -26,6 +26,7 @@
     "test:integration": "vitest run test/integration --passWithNoTests"
   },
   "dependencies": {
+    "amem-core": "workspace:*",
     "fastify": "^5.10.0"
   },
   "devDependencies": {

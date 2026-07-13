@@ -32,6 +32,9 @@ importers:
 
   packages/amem-api:
     dependencies:
+      amem-core:
+        specifier: workspace:*
+        version: link:../amem-core
       fastify:
         specifier: ^5.10.0
         version: 5.10.0
