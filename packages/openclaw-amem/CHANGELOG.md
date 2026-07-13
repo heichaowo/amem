@@ -1,5 +1,23 @@
 # Changelog
 
+## 1.1.4
+
+### Patch Changes
+
+- [#25](https://github.com/heichaowo/amem/pull/25) [`ec149d9`](https://github.com/heichaowo/amem/commit/ec149d9c3ad07f4af7c6e3028f2739df98b20121) Thanks [@heichaowo](https://github.com/heichaowo)! - Fix a phantom `amem-core@0.1.0` dependency that broke installation from ClawHub.
+
+  The engine is bundled into the plugin's `dist` by tsup, but `amem-core` was
+  still declared as a `workspace:*` devDependency. On publish, pnpm rewrote that
+  to `amem-core@0.1.0` — a private package that does not exist on npm. ClawHub
+  extracts the tarball and runs a full `npm install`, which then 404s on it, so
+  the plugin could not be installed at all.
+
+  The engine is now resolved by a build alias to its source (see
+  `tsup.config.ts`) instead of a package dependency, so it stays inlined in the
+  bundle while no longer appearing anywhere in the published manifest.
+
+- [`7967915`](https://github.com/heichaowo/amem/commit/7967915de59855a7993adab4e43e10203617e500) - Refresh the package description shown on npm and ClawHub — replace the stale "TypeScript rewrite" wording with a description of what the plugin actually does: an OpenClaw memory plugin implementing A-MEM, with evolving memory, graph linking, and hybrid retrieval.
+
 ## 1.1.3
 
 ### Patch Changes
