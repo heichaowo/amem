@@ -104,24 +104,28 @@ function severityBadge(reasons: LowQualityReason[]): string {
 }
 
 export async function generateReviewBatch(agentId: string, outputPath?: string): Promise<string> {
-  // Confine the write to the review directory. `outputPath` reaches here from
-  // the memory_quality_scan tool, so a prompt-injected agent could otherwise
-  // hand us an absolute path or a ../ traversal and overwrite any file the
-  // process can write (CodeQL js/path-injection). Reject anything that escapes
-  // the root before we touch the filesystem; operators widen the root with
-  // AMEM_REVIEW_DIR.
+  // Resolve the target inside the review root and confine it there. outputPath
+  // arrives from the memory_quality_scan tool, so a prompt-injected agent could
+  // otherwise hand us an absolute path or a ../ traversal and overwrite any file
+  // the process can write (CodeQL js/path-injection). We resolve against the
+  // root, reject anything that escapes it, and then write to the *resolved*
+  // path — so the tainted value only reaches fs through the containment check.
+  // Operators widen the root with AMEM_REVIEW_DIR.
+  const root = path.resolve(DEFAULT_OUTPUT_DIR)
+  let filePath: string
+  let batchN: number
   if (outputPath) {
-    const root = path.resolve(DEFAULT_OUTPUT_DIR)
-    const target = path.resolve(outputPath)
-    if (target !== root && !target.startsWith(root + path.sep)) {
+    filePath = path.resolve(root, outputPath)
+    if (filePath !== root && !filePath.startsWith(root + path.sep)) {
       throw new Error(`[quality] outputPath 越出审核目录 (${root}): ${outputPath}`)
     }
+    batchN = 0
+  } else {
+    batchN = nextBatchNumber(root)
+    filePath = path.join(root, `amem-review-batch${batchN}.md`)
   }
 
   const items = await scanLowQuality(agentId)
-  const dir = outputPath ? path.dirname(outputPath) : DEFAULT_OUTPUT_DIR
-  const batchN = outputPath ? 0 : nextBatchNumber(dir)
-  const filePath = outputPath || path.join(dir, `amem-review-batch${batchN}.md`)
 
   const now = new Date().toISOString().slice(0, 10)
   const lines: string[] = []
