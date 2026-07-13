@@ -35,14 +35,19 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      # Opens a "Version Packages" PR when changesets exist; once that PR is
-      # merged (versions bumped), the next run publishes to npm.
+      # Opens the release PR when changesets exist; once that PR is merged
+      # (versions bumped), the next run publishes to npm.
       - name: Create Release PR or Publish
         id: changesets
         uses: changesets/action@v1
         with:
           version: pnpm run version
           publish: pnpm run release
+          # Default is a bare "Version Packages", which reads as noise in the PR
+          # list and breaks the repo's conventional-commit history. Name it for
+          # what it is; the same string is used for the squash-merge commit.
+          title: 'chore(release): version packages'
+          commit: 'chore(release): version packages'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
@@ -58,7 +63,11 @@ jobs:
         if: steps.changesets.outputs.published == 'true' && contains(steps.changesets.outputs.publishedPackages, 'openclaw-amem')
         working-directory: packages/openclaw-amem
         run: |
-          npm i -g clawhub
+          # Pin the CLI: an unpinned global install lets a broken clawhub
+          # release fail this step *after* npm has already published, leaving
+          # the two registries on different versions. 0.23.1 is the version
+          # OpenClaw itself pins for its own plugin publishes.
+          npm i -g clawhub@0.23.1
           clawhub login --token "$CLAWHUB_TOKEN"
           pnpm pack --pack-destination "$RUNNER_TEMP"
           rm -rf "$RUNNER_TEMP/clawhub-pkg" && mkdir -p "$RUNNER_TEMP/clawhub-pkg"
