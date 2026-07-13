@@ -104,6 +104,20 @@ function severityBadge(reasons: LowQualityReason[]): string {
 }
 
 export async function generateReviewBatch(agentId: string, outputPath?: string): Promise<string> {
+  // Confine the write to the review directory. `outputPath` reaches here from
+  // the memory_quality_scan tool, so a prompt-injected agent could otherwise
+  // hand us an absolute path or a ../ traversal and overwrite any file the
+  // process can write (CodeQL js/path-injection). Reject anything that escapes
+  // the root before we touch the filesystem; operators widen the root with
+  // AMEM_REVIEW_DIR.
+  if (outputPath) {
+    const root = path.resolve(DEFAULT_OUTPUT_DIR)
+    const target = path.resolve(outputPath)
+    if (target !== root && !target.startsWith(root + path.sep)) {
+      throw new Error(`[quality] outputPath 越出审核目录 (${root}): ${outputPath}`)
+    }
+  }
+
   const items = await scanLowQuality(agentId)
   const dir = outputPath ? path.dirname(outputPath) : DEFAULT_OUTPUT_DIR
   const batchN = outputPath ? 0 : nextBatchNumber(dir)
