@@ -24,6 +24,7 @@
     "build": "tsup",
     "dev": "tsup --watch",
     "typecheck": "tsc --noEmit",
+    "lint": "eslint src",
     "test": "vitest run",
     "test:unit": "vitest run test/unit",
     "test:integration": "vitest run test/integration --passWithNoTests"
@@ -36,10 +37,13 @@
     "uuid": "^14.0.0"
   },
   "devDependencies": {
+    "@eslint/js": "^10.0.1",
     "@types/node": "^26.1.1",
     "@types/uuid": "^11.0.0",
+    "eslint": "^10.4.1",
     "tsup": "^8.4.0",
     "typescript": "^5.9.3",
+    "typescript-eslint": "^8.60.1",
     "vitest": "^4.1.10"
   },
   "optionalDependencies": {

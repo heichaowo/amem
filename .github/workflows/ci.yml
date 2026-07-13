@@ -32,20 +32,29 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      # `pnpm -r <script>` skips packages that do not define <script>, without
+      # saying so. Guard the Lint and Typecheck steps below against a package
+      # quietly opting out of them.
+      - name: Assert every package defines typecheck and lint
+        run: node tools/assert-package-scripts.mjs
+
       - name: Format check
         run: pnpm format
 
       - name: Lint
         run: pnpm -r lint
 
+      # Must precede Typecheck: openclaw-amem imports amem-core, whose
+      # `exports.types` points into its gitignored dist/. `pnpm -r build` is
+      # topological, so amem-core builds first and the declarations exist.
+      - name: Build
+        run: pnpm -r build
+
       - name: Typecheck
         run: pnpm -r typecheck
 
       - name: Unit tests
         run: pnpm test:unit
-
-      - name: Build
-        run: pnpm -r build
 
   secret-scan:
     runs-on: ubuntu-latest
