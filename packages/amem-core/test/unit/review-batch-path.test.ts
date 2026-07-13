@@ -25,33 +25,35 @@ import { generateReviewBatch } from '../../src/quality.js'
 afterAll(() => fs.rmSync(ROOT, { recursive: true, force: true }))
 
 describe('generateReviewBatch outputPath confinement', () => {
-  it('rejects an absolute path outside the review directory', async () => {
-    await expect(generateReviewBatch('a', '/etc/passwd')).rejects.toThrow(/审核目录/)
+  it('rejects an absolute path', async () => {
+    await expect(generateReviewBatch('a', '/etc/passwd')).rejects.toThrow(/纯文件名/)
   })
 
-  it('rejects a ../ traversal that climbs out of the root', async () => {
-    await expect(generateReviewBatch('a', path.join(ROOT, '..', '..', 'evil.md'))).rejects.toThrow(
-      /审核目录/
-    )
+  it('rejects a ../ traversal', async () => {
+    await expect(generateReviewBatch('a', '../../../evil.md')).rejects.toThrow(/纯文件名/)
   })
 
-  it('rejects a prefix-collision sibling (root-evil vs root)', async () => {
-    // `${ROOT}-evil/x` startsWith `${ROOT}` textually but is NOT inside ${ROOT};
-    // the path.sep boundary check is what stops it.
-    await expect(generateReviewBatch('a', `${ROOT}-evil/x.md`)).rejects.toThrow(/审核目录/)
+  it('rejects any path carrying a directory component', async () => {
+    await expect(generateReviewBatch('a', 'sub/review.md')).rejects.toThrow(/纯文件名/)
+  })
+
+  it('rejects "." and ".." which basename would collapse onto the root dir', async () => {
+    await expect(generateReviewBatch('a', '.')).rejects.toThrow(/纯文件名/)
+    await expect(generateReviewBatch('a', '..')).rejects.toThrow(/纯文件名/)
   })
 
   it('rejects before any filesystem write happens', async () => {
-    const target = '/tmp/amem-escape-proof.md'
-    fs.rmSync(target, { force: true })
-    await expect(generateReviewBatch('a', target)).rejects.toThrow()
-    expect(fs.existsSync(target)).toBe(false)
+    const escaped = '/tmp/amem-escape-proof.md'
+    fs.rmSync(escaped, { force: true })
+    await expect(generateReviewBatch('a', escaped)).rejects.toThrow()
+    expect(fs.existsSync(escaped)).toBe(false)
+    // and it did not silently redirect the traversal into the root either
+    expect(fs.existsSync(path.join(ROOT, 'amem-escape-proof.md'))).toBe(false)
   })
 
-  it('accepts a path inside the review directory and writes it', async () => {
-    const target = path.join(ROOT, 'sub', 'review.md')
-    const out = await generateReviewBatch('a', target)
-    expect(out).toBe(target)
-    expect(fs.existsSync(target)).toBe(true)
+  it('accepts a bare filename and writes it into the review root', async () => {
+    const out = await generateReviewBatch('a', 'review.md')
+    expect(out).toBe(path.join(ROOT, 'review.md'))
+    expect(fs.existsSync(out)).toBe(true)
   })
 })

@@ -356,7 +356,8 @@ function register(api: {
             properties: {
               outputPath: {
                 type: 'string',
-                description: 'Custom output path for the review batch file (optional, auto-generates if omitted)',
+                description:
+                  'Custom filename for the review batch (optional, auto-generates if omitted). A bare filename only — it is written under AMEM_REVIEW_DIR; a path with directories is rejected.',
               },
             },
             required: [],

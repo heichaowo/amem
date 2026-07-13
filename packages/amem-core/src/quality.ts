@@ -104,21 +104,22 @@ function severityBadge(reasons: LowQualityReason[]): string {
 }
 
 export async function generateReviewBatch(agentId: string, outputPath?: string): Promise<string> {
-  // Resolve the target inside the review root and confine it there. outputPath
-  // arrives from the memory_quality_scan tool, so a prompt-injected agent could
-  // otherwise hand us an absolute path or a ../ traversal and overwrite any file
-  // the process can write (CodeQL js/path-injection). We resolve against the
-  // root, reject anything that escapes it, and then write to the *resolved*
-  // path — so the tainted value only reaches fs through the containment check.
-  // Operators widen the root with AMEM_REVIEW_DIR.
+  // outputPath is a bare filename, not a path. It arrives from the
+  // memory_quality_scan tool, so a prompt-injected agent could otherwise hand
+  // us an absolute path or a ../ traversal and overwrite any file the process
+  // can write (CodeQL js/path-injection). path.basename() strips every
+  // directory component, so the write can only ever land in the review root;
+  // we reject anything that carried a directory part loudly rather than
+  // silently rewriting it. Operators choose the root with AMEM_REVIEW_DIR.
   const root = path.resolve(DEFAULT_OUTPUT_DIR)
   let filePath: string
   let batchN: number
   if (outputPath) {
-    filePath = path.resolve(root, outputPath)
-    if (filePath !== root && !filePath.startsWith(root + path.sep)) {
-      throw new Error(`[quality] outputPath 越出审核目录 (${root}): ${outputPath}`)
+    const name = path.basename(outputPath)
+    if (name !== outputPath || name === '' || name === '.' || name === '..') {
+      throw new Error(`[quality] outputPath 必须是纯文件名（不含目录）: ${outputPath}`)
     }
+    filePath = path.join(root, name)
     batchN = 0
   } else {
     batchN = nextBatchNumber(root)
