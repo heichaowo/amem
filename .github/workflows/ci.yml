@@ -38,6 +38,11 @@ jobs:
       - name: Assert every package defines typecheck and lint
         run: node tools/assert-package-scripts.mjs
 
+      # A published package must not depend on a private workspace one, or the
+      # registry install 404s on it — this is what broke openclaw-amem@1.1.3.
+      - name: Assert no published package depends on a private one
+        run: node tools/assert-no-private-deps.mjs
+
       - name: Format check
         run: pnpm format
 
