@@ -162,4 +162,22 @@ describe('MCP bridge', () => {
 
     expect(requestFor().url).toBe('http://memory.internal:9000/v1/memories/search')
   })
+
+  it('keeps only the origin of AMEM_API_URL, so a pasted path cannot bend the route', async () => {
+    vi.stubEnv('AMEM_API_URL', 'http://memory.internal:9000/some/path')
+    fetchMock.mockResolvedValue(ok({ results: [] }))
+
+    await call('memory_search', { query: 'dragon' })
+
+    expect(requestFor().url).toBe('http://memory.internal:9000/v1/memories/search')
+  })
+
+  it('refuses a non-http(s) AMEM_API_URL rather than shipping memories somewhere odd', async () => {
+    vi.stubEnv('AMEM_API_URL', 'file:///etc/passwd')
+
+    const res = await call('memory_search', { query: 'dragon' })
+
+    expect(res.isError).toBe(true)
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
 })
