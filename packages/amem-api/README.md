@@ -4,7 +4,7 @@
 
 One process owns Qdrant, the embedding model, evolution and consolidation. Every consumer — the [`openclaw-amem`](../openclaw-amem) plugin in remote mode, a game brain — talks to it over HTTP or MCP rather than importing [`amem-core`](../amem-core) and opening its own Qdrant connection. That is what makes the single-writer guarantee **structural** rather than a convention.
 
-> ⚠️ **Not published, and not finished.** This package is `private` while its API settles. The MCP bridge and the auth/config layer are still landing.
+> ⚠️ **Not published, and not finished.** This package is `private` while its API settles. The auth/config layer is still landing.
 
 ## Status
 
@@ -12,7 +12,7 @@ One process owns Qdrant, the embedding model, evolution and consolidation. Every
 | --- | --- |
 | `GET /healthz` | ✅ readiness |
 | memory routes (`/v1/memories`, …) | ✅ |
-| MCP bridge (stdio) | ⏳ |
+| MCP bridge (stdio) | ✅ |
 | auth + non-localhost binding | ⏳ |
 
 ## API
@@ -46,9 +46,27 @@ pnpm --filter @heichaowo/amem-api start
 | `AMEM_API_PORT` | `7788` | port |
 | `AMEM_API_LOG_LEVEL` | `info` | pino level |
 
+## MCP
+
+`amem-mcp` speaks MCP over stdio, exposing the same operations as five tools: **`memory_add`**, **`memory_add_episodic`**, **`memory_search`**, **`memory_consolidate`**, **`memory_quality_scan`**. Point any local MCP client at it:
+
+```json
+{
+  "mcpServers": {
+    "amem": { "command": "amem-mcp", "env": { "AMEM_API_URL": "http://127.0.0.1:7788" } }
+  }
+}
+```
+
+**It is a client of `amem-api`, not a second engine** — so `amem-api` must be running. That is deliberate. A stdio MCP server is spawned once *per client*; if this one owned the engine, every client that attached would bring up its own Qdrant connection and its own embedding model, which is exactly the N-writers problem this service exists to prevent. Being a thin client also means it starts instantly, with no model to load.
+
+| env | default | what |
+| --- | --- | --- |
+| `AMEM_API_URL` | `http://127.0.0.1:7788` | the `amem-api` to talk to |
+
 ## Single-writer rule
 
-**Only one `amem-api` instance may write a given Qdrant collection.** This is deployment discipline, not something the code enforces — running two instances against one collection will corrupt evolution and consolidation state.
+**Only one `amem-api` instance may write a given Qdrant collection.** This is deployment discipline, not something the code enforces — running two instances against one collection will corrupt evolution and consolidation state. Any number of MCP clients may attach; they all go through the one service.
 
 ## License
 
