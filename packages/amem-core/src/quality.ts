@@ -104,10 +104,29 @@ function severityBadge(reasons: LowQualityReason[]): string {
 }
 
 export async function generateReviewBatch(agentId: string, outputPath?: string): Promise<string> {
+  // outputPath is a bare filename, not a path. It arrives from the
+  // memory_quality_scan tool, so a prompt-injected agent could otherwise hand
+  // us an absolute path or a ../ traversal and overwrite any file the process
+  // can write (CodeQL js/path-injection). path.basename() strips every
+  // directory component, so the write can only ever land in the review root;
+  // we reject anything that carried a directory part loudly rather than
+  // silently rewriting it. Operators choose the root with AMEM_REVIEW_DIR.
+  const root = path.resolve(DEFAULT_OUTPUT_DIR)
+  let filePath: string
+  let batchN: number
+  if (outputPath) {
+    const name = path.basename(outputPath)
+    if (name !== outputPath || name === '' || name === '.' || name === '..') {
+      throw new Error(`[quality] outputPath 必须是纯文件名（不含目录）: ${outputPath}`)
+    }
+    filePath = path.join(root, name)
+    batchN = 0
+  } else {
+    batchN = nextBatchNumber(root)
+    filePath = path.join(root, `amem-review-batch${batchN}.md`)
+  }
+
   const items = await scanLowQuality(agentId)
-  const dir = outputPath ? path.dirname(outputPath) : DEFAULT_OUTPUT_DIR
-  const batchN = outputPath ? 0 : nextBatchNumber(dir)
-  const filePath = outputPath || path.join(dir, `amem-review-batch${batchN}.md`)
 
   const now = new Date().toISOString().slice(0, 10)
   const lines: string[] = []
