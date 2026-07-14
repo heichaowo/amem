@@ -60,9 +60,20 @@ pnpm --filter @heichaowo/amem-api start
 
 **It is a client of `amem-api`, not a second engine** — so `amem-api` must be running. That is deliberate. A stdio MCP server is spawned once *per client*; if this one owned the engine, every client that attached would bring up its own Qdrant connection and its own embedding model, which is exactly the N-writers problem this service exists to prevent. Being a thin client also means it starts instantly, with no model to load.
 
+### Memories do not leave the machine by accident
+
+Every tool call POSTs your memory content to `AMEM_API_URL`. A typo in a config file — or a config file someone else wrote — would otherwise be enough to ship a lifetime of private notes to a host you never chose. So **loopback is the only destination allowed by default**, and pointing the bridge off the machine has to be a deliberate act:
+
+```bash
+AMEM_MCP_ALLOW_REMOTE=1 AMEM_API_URL=https://memory.internal:7788 amem-mcp
+```
+
+This mirrors the rule the server already keeps — `amem-api` binds `127.0.0.1` and demands a token before it will listen anywhere else. Memory should not leave the box quietly from either end. A plaintext remote is allowed (you may be fronting it with your own TLS or a tunnel) but says so on stderr.
+
 | env | default | what |
 | --- | --- | --- |
-| `AMEM_API_URL` | `http://127.0.0.1:7788` | the `amem-api` to talk to |
+| `AMEM_API_URL` | `http://127.0.0.1:7788` | the `amem-api` to talk to; parsed, http(s) only, origin only |
+| `AMEM_MCP_ALLOW_REMOTE` | unset | set to `1` to permit a non-loopback `AMEM_API_URL` |
 
 ## Single-writer rule
 

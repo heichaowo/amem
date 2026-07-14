@@ -19,24 +19,54 @@ import { z } from 'zod'
  */
 const DEFAULT_API_URL = 'http://127.0.0.1:7788'
 
+/** 127.0.0.0/8, ::1, and the name that resolves to them. */
+function isLoopback(hostname: string): boolean {
+  return hostname === 'localhost' || hostname === '::1' || /^127\./.test(hostname)
+}
+
 /**
- * Parse AMEM_API_URL rather than interpolate it. An operator who pastes a URL
- * carrying a path would otherwise silently end up POSTing to
- * `…/their/path/v1/memories`, and a typo'd scheme would fail deep inside fetch
- * with nothing to go on. Keep only the origin, and insist it is http(s) —
- * this bridge ships memory content, so where it ships it to is worth checking.
+ * Where this bridge is allowed to send memories.
+ *
+ * Every tool call POSTs the user's memory content to this origin, so a typo in
+ * a config file — or a config file someone else wrote — is enough to ship a
+ * lifetime of private notes to a host they did not choose. Loopback is
+ * therefore the only destination allowed by default; leaving the machine has to
+ * be a deliberate act (AMEM_MCP_ALLOW_REMOTE=1), not an accident.
+ *
+ * This mirrors the rule the server already keeps: amem-api binds 127.0.0.1 and
+ * demands a token before it will listen anywhere else. The client half owes the
+ * same discipline — memory should not leave the box quietly from either end.
+ *
+ * The URL is parsed rather than interpolated, too: a pasted URL carrying a path
+ * would otherwise silently redirect every request to `…/their/path/v1/memories`.
  */
 function apiOrigin(): string {
   const raw = process.env.AMEM_API_URL ?? DEFAULT_API_URL
+
   let url: URL
   try {
     url = new URL(raw)
   } catch {
     throw new Error(`AMEM_API_URL is not a valid URL: "${raw}"`)
   }
+
   if (url.protocol !== 'http:' && url.protocol !== 'https:') {
     throw new Error(`AMEM_API_URL must be http(s), got "${url.protocol}" in "${raw}"`)
   }
+
+  if (!isLoopback(url.hostname) && process.env.AMEM_MCP_ALLOW_REMOTE !== '1') {
+    throw new Error(
+      `AMEM_API_URL points off this machine (${url.hostname}). This bridge sends your memory ` +
+        `content to that host. If that is what you want, set AMEM_MCP_ALLOW_REMOTE=1.`
+    )
+  }
+
+  if (!isLoopback(url.hostname) && url.protocol === 'http:') {
+    // Allowed — an operator may be fronting amem-api with their own TLS or a
+    // tunnel — but they should know the memories are crossing the wire in clear.
+    process.stderr.write(`amem-mcp: warning — sending memory content in plaintext to ${url.host}. Prefer https.\n`)
+  }
+
   return url.origin
 }
 

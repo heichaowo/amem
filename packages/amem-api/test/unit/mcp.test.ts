@@ -154,30 +154,64 @@ describe('MCP bridge', () => {
     expect(res.content[0].text).toContain('amem-api')
   })
 
-  it('honours AMEM_API_URL', async () => {
-    vi.stubEnv('AMEM_API_URL', 'http://memory.internal:9000')
+  it('honours AMEM_API_URL on a loopback host', async () => {
+    vi.stubEnv('AMEM_API_URL', 'http://localhost:9000')
     fetchMock.mockResolvedValue(ok({ results: [] }))
 
     await call('memory_search', { query: 'dragon' })
 
-    expect(requestFor().url).toBe('http://memory.internal:9000/v1/memories/search')
+    expect(requestFor().url).toBe('http://localhost:9000/v1/memories/search')
   })
 
-  it('keeps only the origin of AMEM_API_URL, so a pasted path cannot bend the route', async () => {
-    vi.stubEnv('AMEM_API_URL', 'http://memory.internal:9000/some/path')
+  it('keeps only the origin, so a pasted path cannot bend every route', async () => {
+    vi.stubEnv('AMEM_API_URL', 'http://127.0.0.1:9000/some/path')
     fetchMock.mockResolvedValue(ok({ results: [] }))
 
     await call('memory_search', { query: 'dragon' })
 
-    expect(requestFor().url).toBe('http://memory.internal:9000/v1/memories/search')
+    expect(requestFor().url).toBe('http://127.0.0.1:9000/v1/memories/search')
   })
 
-  it('refuses a non-http(s) AMEM_API_URL rather than shipping memories somewhere odd', async () => {
+  it('refuses a non-http(s) AMEM_API_URL', async () => {
     vi.stubEnv('AMEM_API_URL', 'file:///etc/passwd')
 
     const res = await call('memory_search', { query: 'dragon' })
 
     expect(res.isError).toBe(true)
     expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  // The guardrail that matters: a typo in a config file must not be enough to
+  // ship a lifetime of private memories to a host the user never chose.
+  it('refuses to send memories off the machine by default', async () => {
+    vi.stubEnv('AMEM_API_URL', 'http://evil.example.com')
+
+    const res = await call('memory_add', { text: 'the ender dragon killed us at the portal' })
+
+    expect(res.isError).toBe(true)
+    expect(res.content[0].text).toMatch(/off this machine|AMEM_MCP_ALLOW_REMOTE/)
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('allows a remote amem-api only when the operator says so explicitly', async () => {
+    vi.stubEnv('AMEM_API_URL', 'https://memory.internal:9000')
+    vi.stubEnv('AMEM_MCP_ALLOW_REMOTE', '1')
+    fetchMock.mockResolvedValue(ok({ results: [] }))
+
+    await call('memory_search', { query: 'dragon' })
+
+    expect(requestFor().url).toBe('https://memory.internal:9000/v1/memories/search')
+  })
+
+  it('warns when an allowed remote is plaintext, since the memories cross the wire in clear', async () => {
+    vi.stubEnv('AMEM_API_URL', 'http://memory.internal:9000')
+    vi.stubEnv('AMEM_MCP_ALLOW_REMOTE', '1')
+    const warn = vi.spyOn(process.stderr, 'write').mockReturnValue(true)
+    fetchMock.mockResolvedValue(ok({ results: [] }))
+
+    await call('memory_search', { query: 'dragon' })
+
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('plaintext'))
+    warn.mockRestore()
   })
 })
