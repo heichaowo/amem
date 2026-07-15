@@ -54,9 +54,9 @@ jobs:
       - name: Lint
         run: pnpm -r lint
 
-      # Must precede Typecheck: openclaw-amem imports amem-core, whose
+      # Must precede Typecheck: openclaw-amem inlines the amem engine, whose
       # `exports.types` points into its gitignored dist/. `pnpm -r build` is
-      # topological, so amem-core builds first and the declarations exist.
+      # topological, so amem builds first and the declarations exist.
       - name: Build
         run: pnpm -r build
 
@@ -146,7 +146,7 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       # Fails the PR if any workspace package changed without a changeset —
-      # including the private amem-core, because it is bundled into the
+      # including the private amem engine, because it is bundled into the
       # published plugin, so engine changes really do ship. When a change
       # genuinely needs no release, say so explicitly with
       # `pnpm changeset add --empty`. Changes outside a package (docs, CI)

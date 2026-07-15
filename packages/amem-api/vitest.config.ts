@@ -9,9 +9,9 @@ export default defineConfig({
       // is no dist to import; and it puts the engine's own `embedding.js` and
       // `llm.js` in the module graph, where a test can mock them — so the
       // pipeline runs against real Qdrant while downloading no model and making
-      // no LLM call. The unit tests mock 'amem-core' wholesale, so for them the
+      // no LLM call. The unit tests mock 'amem' wholesale, so for them the
       // alias never resolves to anything and this is a no-op.
-      'amem-core': resolve(import.meta.dirname, '../amem-core/src/index.ts'),
+      'amem': resolve(import.meta.dirname, '../amem-core/src/index.ts'),
     },
   },
 })

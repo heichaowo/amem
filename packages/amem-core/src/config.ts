@@ -1,5 +1,5 @@
 /**
- * config.ts — runtime configuration for amem-core.
+ * config.ts — runtime configuration for the amem engine.
  *
  * `dataDir` holds the evolution-throttle counter and consolidation logs.
  * Defaults to ~/.amem so the engine stays framework-agnostic; the OpenClaw
