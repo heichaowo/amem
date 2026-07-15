@@ -4,12 +4,12 @@
     "outDir": "dist",
     "rootDir": "src",
     "baseUrl": ".",
-    // amem-core is inlined by the bundler (see tsup.config.ts), not a package
-    // dependency, so tsc is pointed at its built declarations — the same
-    // dist/index.d.ts the workspace symlink used to resolve — to type the
-    // import. A declaration file is exempt from the rootDir constraint.
+    // The `amem` engine is inlined by the bundler (see tsup.config.ts), not a
+    // package dependency, so tsc is pointed at its built declarations
+    // (packages/amem-core/dist/index.d.ts) to type the import. A declaration
+    // file is exempt from the rootDir constraint.
     "paths": {
-      "amem-core": ["../amem-core/dist/index.d.ts"]
+      "amem": ["../amem-core/dist/index.d.ts"]
     }
   },
   "include": ["src"],
