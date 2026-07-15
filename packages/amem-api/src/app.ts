@@ -1,3 +1,4 @@
+import { timingSafeEqual } from 'node:crypto'
 import Fastify, { type FastifyInstance, type FastifyServerOptions } from 'fastify'
 import {
   addEpisodic,
@@ -10,6 +11,15 @@ import {
   searchMemory,
 } from 'amem-core'
 import { classify, errorBody } from './errors.js'
+
+/** Constant-time compare, so a wrong token cannot be found byte-by-byte from
+ * response timing. Length is allowed to differ (and to leak) — timingSafeEqual
+ * requires equal-length buffers, and a token's length is not the secret. */
+function tokenMatches(provided: string, expected: string): boolean {
+  const a = Buffer.from(provided)
+  const b = Buffer.from(expected)
+  return a.length === b.length && timingSafeEqual(a, b)
+}
 
 /**
  * Mirrors amem-core's own default. The maintenance routes have to name an agent
@@ -93,6 +103,26 @@ export function createApp(opts: FastifyServerOptions = {}): FastifyInstance {
     ajv: { customOptions: { removeAdditional: false } },
     ...opts,
   })
+
+  // Bearer auth, when a token is configured. Reading it once at construction is
+  // deliberate: the token is fixed for the process's life, and this also lets a
+  // test build an authed or an open app by setting the env before createApp().
+  // With no token the service is open — which is safe only on loopback, a rule
+  // the entrypoint enforces by refusing to bind elsewhere without one.
+  const token = process.env.AMEM_API_TOKEN
+  if (token) {
+    app.addHook('onRequest', async (req, reply) => {
+      // /healthz stays open: orchestrators and load balancers probe it
+      // unauthenticated, and it reveals liveness, never memory content.
+      if (req.routeOptions.url === '/healthz') return
+
+      const header = req.headers.authorization
+      const provided = header?.startsWith('Bearer ') ? header.slice(7) : ''
+      if (!tokenMatches(provided, token)) {
+        return reply.status(401).send(errorBody(401, new Error('missing or invalid Authorization bearer token')))
+      }
+    })
+  }
 
   // No handler catches anything: Fastify funnels every rejection here, so the
   // mapping from failure to status code lives in exactly one place.

@@ -1,6 +1,7 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js'
 import { z } from 'zod'
+import { isLoopback } from './net.js'
 
 /**
  * The MCP bridge is a thin HTTP client of amem-api — deliberately not a second
@@ -18,11 +19,6 @@ import { z } from 'zod'
  * here can write to stdout, which under stdio *is* the protocol channel.
  */
 const DEFAULT_API_URL = 'http://127.0.0.1:7788'
-
-/** 127.0.0.0/8, ::1, and the name that resolves to them. */
-function isLoopback(hostname: string): boolean {
-  return hostname === 'localhost' || hostname === '::1' || /^127\./.test(hostname)
-}
 
 /**
  * Where this bridge is allowed to send memories.

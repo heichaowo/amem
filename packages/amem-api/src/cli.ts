@@ -1,11 +1,22 @@
 #!/usr/bin/env node
 import { loadModel } from 'amem-core'
 import { createApp } from './app.js'
+import { assertBindable } from './net.js'
 
 const host = process.env.AMEM_API_HOST ?? '127.0.0.1'
 const port = Number(process.env.AMEM_API_PORT ?? 7788)
 
 const app = createApp()
+
+// Fail fast, before the model loads: binding a public interface with no token
+// would expose everyone's memories. createApp() has already wired the token
+// check when one is set; this refuses the one combination that must never run.
+try {
+  assertBindable(host, process.env.AMEM_API_TOKEN)
+} catch (err) {
+  app.log.error((err as Error).message)
+  process.exit(1)
+}
 
 // A single-writer service must let go of Qdrant cleanly on the way out, so the
 // next instance can take over without waiting for a stale connection to lapse.
