@@ -4,7 +4,7 @@
 
 One process owns Qdrant, the embedding model, evolution and consolidation. Every consumer — the [`openclaw-amem`](../openclaw-amem) plugin in remote mode, a game brain — talks to it over HTTP or MCP rather than importing [`amem-core`](../amem-core) and opening its own Qdrant connection. That is what makes the single-writer guarantee **structural** rather than a convention.
 
-> ⚠️ **Not published, and not finished.** This package is `private` while its API settles. The auth/config layer is still landing.
+> ⚠️ **Not published, and not finished.** This package is `private` while its API settles.
 
 ## Status
 
@@ -13,7 +13,7 @@ One process owns Qdrant, the embedding model, evolution and consolidation. Every
 | `GET /healthz` | ✅ readiness |
 | memory routes (`/v1/memories`, …) | ✅ |
 | MCP bridge (stdio) | ✅ |
-| auth + non-localhost binding | ⏳ |
+| auth + non-localhost binding | ✅ |
 
 ## API
 
@@ -42,9 +42,26 @@ pnpm --filter @heichaowo/amem-api start
 
 | env | default | what |
 | --- | --- | --- |
-| `AMEM_API_HOST` | `127.0.0.1` | bind address — localhost only, by design |
+| `AMEM_API_HOST` | `127.0.0.1` | bind address — loopback by default |
 | `AMEM_API_PORT` | `7788` | port |
+| `AMEM_API_TOKEN` | unset | when set, every request needs `Authorization: Bearer <token>` |
 | `AMEM_API_LOG_LEVEL` | `info` | pino level |
+
+## Auth
+
+Set `AMEM_API_TOKEN` and every request must carry `Authorization: Bearer <token>`; a missing or wrong token is a `401`. The comparison is constant-time. `/healthz` stays open — it is for probes and reveals only liveness, never memory content.
+
+With no token the service is open, which is safe **only** on loopback. So the entrypoint enforces the pairing: **it refuses to bind a non-loopback host (`0.0.0.0`, a LAN address, …) unless `AMEM_API_TOKEN` is set**, rather than quietly exposing an unauthenticated memory service to the network.
+
+```bash
+# open, loopback only — fine for a single local user
+amem-api
+
+# reachable from the network — a token is required, or it won't start
+AMEM_API_HOST=0.0.0.0 AMEM_API_TOKEN=$(openssl rand -hex 32) amem-api
+```
+
+The MCP bridge keeps the mirror-image rule on the client side (loopback-only unless `AMEM_MCP_ALLOW_REMOTE=1`) — see below.
 
 ## MCP
 
