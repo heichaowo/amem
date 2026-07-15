@@ -1,9 +1,12 @@
 {
   "name": "amem",
   "version": "0.1.0",
-  "private": true,
-  "description": "A-MEM agentic memory engine — Qdrant + Transformers.js, framework-agnostic. Extracted from openclaw-amem.",
+  "description": "The agentic memory engine — notes that construct, link, and evolve like a Zettelkasten, on Qdrant + Transformers.js. No Python. Framework-agnostic.",
   "license": "MIT",
+  "homepage": "https://amem.owo.lc",
+  "bugs": {
+    "url": "https://github.com/heichaowo/amem/issues"
+  },
   "type": "module",
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",
