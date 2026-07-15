@@ -21,6 +21,7 @@ export interface ErrorBody {
 
 const PHRASE: Record<number, string> = {
   400: 'Bad Request',
+  401: 'Unauthorized',
   422: 'Unprocessable Entity',
   500: 'Internal Server Error',
   503: 'Service Unavailable',
@@ -52,7 +53,10 @@ export function classify(err: unknown): number {
  */
 export function errorBody(statusCode: number, err: unknown): ErrorBody {
   const body: ErrorBody = { statusCode, error: PHRASE[statusCode] }
-  if (statusCode === 400 || statusCode === 422) {
+  // A caller's own mistakes get an explanation — a bad request, a rejected
+  // write, a missing token. A 5xx message can carry collection names, payloads
+  // and paths, so it stays in the log.
+  if (statusCode === 400 || statusCode === 401 || statusCode === 422) {
     body.detail = err instanceof Error ? err.message : String(err)
   }
   return body
