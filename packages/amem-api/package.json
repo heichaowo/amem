@@ -1,6 +1,6 @@
 {
   "name": "@heichaowo/amem-api",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
   "description": "amem-api — the single-writer memory service for the amem stack (HTTP + MCP).",
   "license": "MIT",
