@@ -24,19 +24,18 @@ import {
   generateReviewBatch,
   configure,
   type AmemPluginConfig,
-  type StorageContext,
 } from 'amem'
 import { createHash } from 'crypto'
 import { hookLiveness, markHookFired, hookNeverFiredWarning } from './hook-liveness.js'
+import {
+  resolveAgentId as resolveAgentIdWith,
+  buildScope as buildScopeWith,
+  type AgentCtx,
+  type AgentScope,
+} from './scope.js'
 
 // ── Config ────────────────────────────────────────────────────────────────────
 let _config: Record<string, unknown> = {}
-
-/** Per-call context carrying the runtime per-session agent identity. */
-interface AgentCtx {
-  agentId?: string
-  sessionKey?: string
-}
 
 // ── OpenClaw plugin registration ──────────────────────────────────────────────
 function register(api: {
@@ -56,37 +55,11 @@ function register(api: {
   configure({ dataDir: path.join(os.homedir(), '.openclaw') })
 
   // ── Story 32 (Issue 1): per-agent scope resolved PER CALL, not at register ────
-  // The runtime per-session agentId is only present on each interface's ctx — it
-  // does NOT exist on `api` at register time. Resolve it from each call's ctx:
-  //   ctx.agentId → parse ctx.sessionKey ("agent:<AGENTID>:<REST>") → pluginConfig.agentId → 'main'
-  function parseAgentIdFromSessionKey(sessionKey?: string): string | undefined {
-    if (!sessionKey) return undefined
-    const parts = sessionKey.split(':').filter(Boolean)
-    if (parts.length >= 3 && parts[0] === 'agent') return parts[1] || undefined
-    return undefined
-  }
-  function resolveAgentId(ctx?: AgentCtx): string {
-    return ctx?.agentId ?? parseAgentIdFromSessionKey(ctx?.sessionKey) ?? pluginConfig.agentId ?? 'main'
-  }
-
-  // Per-agent config + storage context, built on demand for the resolved agentId.
-  interface AgentScope {
-    agentId: string
-    collection?: string
-    storageCtx: StorageContext
-  }
-  function buildScope(rawAgentId: string): AgentScope {
-    const agentCfg = pluginConfig.agents?.[rawAgentId] ?? {}
-    const effectiveAgentId = agentCfg.agentId ?? rawAgentId
-    const effectiveCollection = agentCfg.collection ?? pluginConfig.collection ?? undefined
-    // Mode B: agent has its own dedicated collection → skip the shared-agent filter.
-    const modeBIsolated = !!agentCfg.collection
-    return {
-      agentId: effectiveAgentId,
-      collection: effectiveCollection,
-      storageCtx: createStorageContext(effectiveCollection, modeBIsolated),
-    }
-  }
+  // The runtime per-session agentId is only present on each interface's ctx, not
+  // on `api` at register time. The resolution logic lives in scope.ts (pure, unit
+  // tested); these closures bind it to this instance's config + storage factory.
+  const resolveAgentId = (ctx?: AgentCtx): string => resolveAgentIdWith(ctx, pluginConfig)
+  const buildScope = (rawAgentId: string): AgentScope => buildScopeWith(rawAgentId, pluginConfig, createStorageContext)
 
   // Background tasks (daily consolidation, service lifecycle) have no per-session
   // ctx — they run on the default agent scope (preserves pre-Story-32 behavior).
