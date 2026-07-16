@@ -12,7 +12,7 @@ const core = vi.hoisted(() => ({
   consolidateMemories: vi.fn(),
   scanLowQuality: vi.fn(),
 }))
-vi.mock('amem', () => core)
+vi.mock('@heichaowo/amem-core', () => core)
 
 import { createApp } from '../../src/app.js'
 

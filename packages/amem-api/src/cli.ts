@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { loadModel } from 'amem'
+import { loadModel } from '@heichaowo/amem-core'
 import { createApp } from './app.js'
 import { assertBindable } from './net.js'
 

@@ -24,7 +24,7 @@ import {
   generateReviewBatch,
   configure,
   type AmemPluginConfig,
-} from 'amem'
+} from '@heichaowo/amem-core'
 import { createHash } from 'crypto'
 import { hookLiveness, markHookFired, hookNeverFiredWarning } from './hook-liveness.js'
 import {
@@ -430,7 +430,7 @@ function register(api: {
           }))
 
           // ── Step 3: 调用 llmCrudDecision ────────────────────────────────────────────
-          const { llmCrudDecision } = await import('amem')
+          const { llmCrudDecision } = await import('@heichaowo/amem-core')
           const operations = await llmCrudDecision(
             userText,
             assistantText,
@@ -571,4 +571,4 @@ export {
   patchNotePayload,
   scanLowQuality,
   generateReviewBatch,
-} from 'amem'
+} from '@heichaowo/amem-core'

@@ -28,7 +28,7 @@
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.29.0",
-    "amem": "workspace:*",
+    "@heichaowo/amem-core": "workspace:*",
     "fastify": "^5.10.0",
     "zod": "^4.4.3"
   },

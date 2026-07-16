@@ -2,14 +2,15 @@
 
 ## Supported versions
 
-`openclaw-amem` is the published artifact. Security fixes land on the latest release; there is no back-porting to older lines.
+Security fixes land on the latest release of each published package; there is no back-porting to older lines.
 
-| Version           | Supported |
-| ----------------- | --------- |
-| latest `1.1.x`    | ✅        |
-| anything older    | ❌        |
+| Package                | Version        | Supported |
+| ---------------------- | -------------- | --------- |
+| `openclaw-amem`        | latest `1.1.x` | ✅        |
+| `@heichaowo/amem-core` | latest `0.2.x` | ✅        |
+| either                 | anything older | ❌        |
 
-`amem-core` and `amem-api` are internal packages that are never published on their own — `amem-core` ships bundled inside the plugin, and `amem-api` is not released yet. Report issues in either against this repository all the same.
+The engine is also bundled inside `openclaw-amem`, so an engine fix ships in both — update the plugin as well as the package. `amem-api` is not released yet; report issues against it here all the same.
 
 ## Reporting a vulnerability
 
