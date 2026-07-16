@@ -23,6 +23,7 @@
     "format": "prettier --check \"src/**/*.ts\"",
     "format:fix": "prettier --write \"src/**/*.ts\"",
     "test": "vitest run",
+    "test:unit": "vitest run test/unit",
     "test:watch": "vitest",
     "check": "npm run format && npm run lint && npm run test"
   },
