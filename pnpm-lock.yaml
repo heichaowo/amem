@@ -32,12 +32,12 @@ importers:
 
   packages/amem-api:
     dependencies:
+      '@heichaowo/amem-core':
+        specifier: workspace:*
+        version: link:../amem-core
       '@modelcontextprotocol/sdk':
         specifier: ^1.29.0
         version: 1.29.0(zod@4.4.3)
-      amem:
-        specifier: workspace:*
-        version: link:../amem-core
       fastify:
         specifier: ^5.10.0
         version: 5.10.0

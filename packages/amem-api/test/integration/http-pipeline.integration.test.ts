@@ -23,7 +23,7 @@ const { COLLECTION, fakeEncode } = vi.hoisted(() => {
 })
 
 // Mock only the engine's embedding + llm — storage stays real, hitting Qdrant.
-// The paths reach amem-core's SOURCE, which the vitest config aliases 'amem'
+// The paths reach amem-core's SOURCE, which the vitest config aliases to the
 // to; that is the whole reason for the alias.
 vi.mock('../../../amem-core/src/embedding.js', () => ({
   encode: async (t: string) => fakeEncode(t),

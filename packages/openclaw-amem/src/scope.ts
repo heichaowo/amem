@@ -13,7 +13,7 @@
  * hook-liveness.ts lives on its own.
  */
 
-import type { AmemPluginConfig, StorageContext } from 'amem'
+import type { AmemPluginConfig, StorageContext } from '@heichaowo/amem-core'
 
 /** Per-call context carrying the runtime per-session agent identity. */
 export interface AgentCtx {

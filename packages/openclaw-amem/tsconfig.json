@@ -9,7 +9,7 @@
     // (packages/amem-core/dist/index.d.ts) to type the import. A declaration
     // file is exempt from the rootDir constraint.
     "paths": {
-      "amem": ["../amem-core/dist/index.d.ts"]
+      "@heichaowo/amem-core": ["../amem-core/dist/index.d.ts"]
     }
   },
   "include": ["src"],

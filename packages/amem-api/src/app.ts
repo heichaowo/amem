@@ -9,7 +9,7 @@ import {
   pingQdrant,
   scanLowQuality,
   searchMemory,
-} from 'amem'
+} from '@heichaowo/amem-core'
 import { classify, errorBody } from './errors.js'
 
 /** Constant-time compare, so a wrong token cannot be found byte-by-byte from

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
-import type { AmemPluginConfig, StorageContext } from 'amem'
+import type { AmemPluginConfig, StorageContext } from '@heichaowo/amem-core'
 import { parseAgentIdFromSessionKey, resolveAgentId, buildScope } from '../../src/scope.js'
 
 describe('parseAgentIdFromSessionKey', () => {
