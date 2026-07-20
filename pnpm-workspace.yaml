@@ -7,3 +7,11 @@ allowBuilds:
   onnxruntime-node: true
   protobufjs: true
   sharp: true
+
+# Force patched versions of vulnerable transitive deps (pnpm 11 reads overrides
+# here, not from package.json's pnpm.overrides):
+#   adm-zip  <0.6.0   CVE-2026-39244 (GHSA-xcpc-8h2w-3j85) — via onnxruntime-node
+#   esbuild  <0.28.1  dev-server file read — via tsup/vite/vitest (dev only)
+overrides:
+  adm-zip: '>=0.6.0'
+  esbuild: '>=0.28.1'
