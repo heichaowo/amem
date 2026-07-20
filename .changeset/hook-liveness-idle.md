@@ -2,9 +2,12 @@
 'openclaw-amem': patch
 ---
 
-Fix a false-positive "agent_end hook has never fired" warning. On an idle
-gateway — restarted and left untouched for 10 minutes — the self-check logged
-that the hook was likely blocked, even though no conversation had happened so
-nothing should ever have fired it. The check now warns only after real activity
-(a memory tool ran, i.e. a conversation occurred) with the hook still never
-firing, which is the genuine "blocked by security policy" signal.
+Replace the agent_end hook self-check with a deterministic config check. It used a
+10-minute timer to guess whether the hook was "blocked", which mis-fired on an idle
+gateway that had simply had no conversation, and only surfaced in the gateway log
+(seen via `openclaw completion --write-state`). The plugin now reads the actual flag —
+`plugins.entries.<id>.hooks.allowConversationAccess` — from the full OpenClaw config
+at startup, so it knows for certain whether automatic memory write-back is on: no
+timer, no heuristic, no idle false positives. When it is off, it logs once at startup
+and appends a clearer, actionable notice to memory_search results so the assistant
+relays it to the user. It stays silent if the config can't be read.
