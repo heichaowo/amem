@@ -48,7 +48,7 @@ OpenClaw Agent
                                          ▼
                           ┌──────────────┼──────────────┐
                           ▼              ▼               ▼
-                       Qdrant     Transformers.js    LLM (Anthropic)
+                       Qdrant     Transformers.js  LLM (Anthropic/OpenAI)
                     (vector store)  (ONNX embed)   (CRUD decision
                       :6333        384-dim local    + link judgment
                    agent_id ISO   + Jieba BM25     + evolution)

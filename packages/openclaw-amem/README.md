@@ -33,7 +33,7 @@ The first open-source A-MEM memory plugin for OpenClaw: dynamic graph linking, h
 - OpenClaw v2026.4+
 - Node.js 24 (18+ works; 24/26 supported)
 - Qdrant running on `:6333`
-- Anthropic API key (`ANTHROPIC_API_KEY`) — or set `AMEM_LLM_BASE_URL` for a compatible proxy
+- An LLM: `ANTHROPIC_API_KEY` by default, or any OpenAI-compatible provider — see [LLM provider](#llm-provider)
 
 ## Installation
 
@@ -82,6 +82,15 @@ Add `openclaw-amem` to your allowed plugins and hook it into the `memory` slot:
 ```bash
 openclaw gateway restart
 ```
+
+## LLM provider
+
+The plugin calls an LLM for note construction, linking, and evolution. Pick the backend with `AMEM_LLM_PROVIDER`:
+
+- **`anthropic`** (default) — the Anthropic Messages API. Set `ANTHROPIC_API_KEY`.
+- **`openai`** — the OpenAI Chat Completions API, which every OpenAI-compatible endpoint speaks. Set `AMEM_LLM_PROVIDER=openai`, point `AMEM_LLM_BASE_URL` at the endpoint, and set `AMEM_LLM_API_KEY` (or the standard `OPENAI_API_KEY`). Covers **OpenAI, DeepSeek, OpenRouter, Groq, Together**, and local servers (**Ollama, vLLM, LM Studio** — no key needed). Reasoning models (`o1`, `o3`, `gpt-5`) are handled automatically.
+
+Choose the model with `AMEM_LLM_MODEL`. Full env-var reference and examples: **[amem.owo.lc/reference/configuration](https://amem.owo.lc/reference/configuration)**.
 
 ## Configuration Reference
 

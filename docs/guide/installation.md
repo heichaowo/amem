@@ -7,7 +7,7 @@
 | OpenClaw    | v2026.4+                                                       |
 | Node.js     | 18+ (Node 24/26 fully supported)                               |
 | Qdrant      | Running on `:6333`                                             |
-| LLM API Key | `ANTHROPIC_API_KEY` env var (or `AMEM_LLM_BASE_URL` for proxy) |
+| LLM access  | `ANTHROPIC_API_KEY` (default), or any OpenAI-compatible provider — see [LLM provider](#llm-provider) |
 
 Qdrant can be started via Docker:
 
@@ -100,3 +100,24 @@ openclaw gateway restart
 ```
 
 On first run, the plugin downloads the `multilingual-e5-small` ONNX embedding model (~120MB) and caches it locally. Subsequent restarts are instant.
+
+---
+
+## LLM provider
+
+The engine calls an LLM for note construction, linking, and evolution. Choose the backend with `AMEM_LLM_PROVIDER`:
+
+- **`anthropic`** (default) — the Anthropic Messages API. Set `ANTHROPIC_API_KEY`.
+- **`openai`** — the OpenAI Chat Completions API, which every OpenAI-compatible endpoint speaks. Set `AMEM_LLM_PROVIDER=openai`, point `AMEM_LLM_BASE_URL` at the endpoint, and set `AMEM_LLM_API_KEY` (or the standard `OPENAI_API_KEY`). This covers **OpenAI, DeepSeek, OpenRouter, Groq, Together**, and local servers (**Ollama, vLLM, LM Studio** — no key needed).
+
+```bash
+# DeepSeek
+AMEM_LLM_PROVIDER=openai AMEM_LLM_BASE_URL=https://api.deepseek.com/v1 \
+AMEM_LLM_API_KEY=sk-... AMEM_LLM_MODEL=deepseek-chat
+
+# Local Ollama (keyless)
+AMEM_LLM_PROVIDER=openai AMEM_LLM_BASE_URL=http://localhost:11434/v1 \
+AMEM_LLM_MODEL=qwen2.5
+```
+
+Full env-var reference and model recommendations: **[Configuration →](/reference/configuration)**.
