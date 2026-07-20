@@ -2,6 +2,8 @@ import { describe, it, expect, beforeEach } from 'vitest'
 import {
   hookLiveness,
   markHookFired,
+  markActivity,
+  hookLikelyBlocked,
   hookNeverFiredWarning,
   __resetHookLiveness,
   HOOK_WARN_DELAY_MS,
@@ -13,10 +15,10 @@ import {
 beforeEach(() => __resetHookLiveness(0))
 
 describe('hookLiveness', () => {
-  it('seeds an unfired record on first access, anchoring firstSeenAt', () => {
+  it('seeds an unfired, no-activity record on first access, anchoring firstSeenAt', () => {
     __resetHookLiveness()
     const s = hookLiveness(1000)
-    expect(s).toEqual({ everFired: false, lastFiredAt: 0, firstSeenAt: 1000 })
+    expect(s).toEqual({ everFired: false, lastFiredAt: 0, firstSeenAt: 1000, sawActivity: false })
   })
 
   it('returns the same record on later calls without moving firstSeenAt', () => {
@@ -42,17 +44,37 @@ describe('markHookFired', () => {
   })
 })
 
-describe('hookNeverFiredWarning', () => {
-  it('stays silent while still inside the warn delay', () => {
+describe('markActivity', () => {
+  it('records that a conversation is happening (shared via globalThis)', () => {
+    expect(hookLiveness().sawActivity).toBe(false)
+    markActivity(10)
+    expect(hookLiveness(1_000_000).sawActivity).toBe(true)
+  })
+})
+
+describe('hookLikelyBlocked / hookNeverFiredWarning', () => {
+  it('stays silent on an IDLE gateway past the delay — no activity, nothing was due', () => {
+    // The regression this fixes: a restarted-but-untouched gateway must not warn.
+    expect(hookLikelyBlocked(HOOK_WARN_DELAY_MS + 1)).toBe(false)
+    expect(hookNeverFiredWarning(HOOK_WARN_DELAY_MS + 1)).toBe('')
+  })
+
+  it('stays silent while still inside the warn delay, even with activity', () => {
+    markActivity(1)
+    expect(hookLikelyBlocked(HOOK_WARN_DELAY_MS)).toBe(false)
     expect(hookNeverFiredWarning(HOOK_WARN_DELAY_MS)).toBe('')
   })
 
-  it('warns once past the delay and the hook has never fired', () => {
+  it('warns once past the delay when there was activity but the hook never fired', () => {
+    markActivity(1)
+    expect(hookLikelyBlocked(HOOK_WARN_DELAY_MS + 1)).toBe(true)
     expect(hookNeverFiredWarning(HOOK_WARN_DELAY_MS + 1)).toBe(HOOK_WARNING_TEXT)
   })
 
-  it('stays silent past the delay once the hook has fired', () => {
-    markHookFired(1)
+  it('stays silent past the delay once the hook has fired, even with activity', () => {
+    markActivity(1)
+    markHookFired(2)
+    expect(hookLikelyBlocked(HOOK_WARN_DELAY_MS + 1)).toBe(false)
     expect(hookNeverFiredWarning(HOOK_WARN_DELAY_MS + 1)).toBe('')
   })
 })

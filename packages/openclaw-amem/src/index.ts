@@ -26,7 +26,7 @@ import {
   type AmemPluginConfig,
 } from '@heichaowo/amem-core'
 import { createHash } from 'crypto'
-import { hookLiveness, markHookFired, hookNeverFiredWarning } from './hook-liveness.js'
+import { hookLiveness, markHookFired, markActivity, hookLikelyBlocked, hookNeverFiredWarning } from './hook-liveness.js'
 import {
   resolveAgentId as resolveAgentIdWith,
   buildScope as buildScopeWith,
@@ -173,6 +173,9 @@ function register(api: {
           async execute(_toolCallId: string, params: { query: string; limit?: number; topicsFilter?: string[] }) {
             const { query, limit = 5, topicsFilter } = params
             const start = Date.now()
+            // A tool call means a conversation is happening, so agent_end is now
+            // due — record activity before checking whether it was ever blocked.
+            markActivity()
             // Story 34 (v1.0.1): warn only if the agent_end hook has never fired
             // on ANY instance in this process (reload-stable; see hookNeverFiredWarning).
             const hookWarning = hookNeverFiredWarning()
@@ -228,6 +231,7 @@ function register(api: {
           async execute(_toolCallId: string, params: { text: string }) {
             const { text } = params
             const start = Date.now()
+            markActivity() // a tool call means a conversation is happening
             try {
               const id = await addMemory(text, scope.agentId, { storageCtx: scope.storageCtx })
               logger.info(`openclaw-amem: memory_add OK id=${id} (${Date.now() - start}ms)`)
@@ -489,12 +493,15 @@ function register(api: {
     )
     logger.info('openclaw-amem: agent_end CRUD decision hook registered')
 
-    // Story 34: 10min self-check — warn if hook never fired (likely blocked)
+    // Story 34: self-check — warn only if the agent_end hook is genuinely blocked,
+    // i.e. a conversation happened (memory tool ran) but the hook never fired.
+    // Gating on activity stops an idle gateway from warning about a hook that
+    // simply had nothing to fire it.
     setTimeout(
       () => {
-        if (!hookLiveness().everFired) {
+        if (hookLikelyBlocked()) {
           logger.warn(
-            '⚠️ openclaw-amem: agent_end hook has never fired in 10 minutes. ' +
+            '⚠️ openclaw-amem: agent_end hook has not fired despite memory activity. ' +
               'It may be blocked by OpenClaw security policy. ' +
               'Add to openclaw.json: plugins.entries.openclaw-amem.hooks.allowConversationAccess=true'
           )
