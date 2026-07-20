@@ -26,7 +26,9 @@
       {
         "id": "amem",
         "envVars": [
+          "AMEM_LLM_PROVIDER",
           "AMEM_LLM_API_KEY",
+          "OPENAI_API_KEY",
           "AMEM_LLM_BASE_URL",
           "AMEM_LLM_MODEL",
           "AMEM_COLLECTION",
@@ -57,7 +59,17 @@
       "hostSuffixes": [
         ".anthropic.com"
       ],
-      "note": "LLM for note construction / link generation / evolution; override the base URL via AMEM_LLM_BASE_URL."
+      "note": "Default LLM for note construction / link generation / evolution; override the base URL via AMEM_LLM_BASE_URL."
+    },
+    {
+      "endpointClass": "openai",
+      "hosts": [
+        "api.openai.com"
+      ],
+      "hostSuffixes": [
+        ".openai.com"
+      ],
+      "note": "Alternate LLM when AMEM_LLM_PROVIDER=openai — the OpenAI Chat Completions API, or any compatible gateway (DeepSeek, OpenRouter, Groq, Together, Ollama, vLLM) selected via AMEM_LLM_BASE_URL."
     }
   ],
   "configSchema": {
