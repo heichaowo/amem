@@ -3,6 +3,11 @@
     "target": "ES2022",
     "module": "NodeNext",
     "moduleResolution": "NodeNext",
+    // tsup's DTS build (rollup-plugin-dts) injects `baseUrl` internally, which
+    // TypeScript 6.0 turns from a warning into an error. Silence it via the
+    // sanctioned transition flag until the toolchain drops baseUrl (removed for
+    // good in TS 7.0).
+    "ignoreDeprecations": "6.0",
     "strict": true,
     "declaration": true,
     "esModuleInterop": true,

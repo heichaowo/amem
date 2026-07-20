@@ -3,14 +3,16 @@
   "compilerOptions": {
     "outDir": "dist",
     "rootDir": "src",
-    "baseUrl": ".",
     // The `amem` engine is inlined by the bundler (see tsup.config.ts), not a
     // package dependency, so tsc is pointed at its built declarations
     // (packages/amem-core/dist/index.d.ts) to type the import. A declaration
     // file is exempt from the rootDir constraint.
     "paths": {
       "@heichaowo/amem-core": ["../amem-core/dist/index.d.ts"]
-    }
+    },
+    // TS 6.0 no longer auto-includes @types packages once `paths` is set, so the
+    // node builtins (os, path, crypto) used here must be requested explicitly.
+    "types": ["node"]
   },
   "include": ["src"],
   "exclude": ["node_modules", "dist"]
