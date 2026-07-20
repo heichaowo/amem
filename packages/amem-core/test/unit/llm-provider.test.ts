@@ -97,11 +97,29 @@ describe('llmCall provider dispatch', () => {
 
   it('falls back to a placeholder key so keyless local servers work', async () => {
     openaiCreate.mockResolvedValue({ choices: [{ message: { content: 'ok' } }] })
-    const { llmCall } = await loadLlm({ AMEM_LLM_PROVIDER: 'openai', AMEM_LLM_API_KEY: undefined })
+    const { llmCall } = await loadLlm({
+      AMEM_LLM_PROVIDER: 'openai',
+      AMEM_LLM_API_KEY: undefined,
+      OPENAI_API_KEY: undefined,
+    })
 
     await llmCall('ping')
 
     expect(OpenAICtor.mock.calls[0][0].apiKey).toBe('sk-no-key-required')
+  })
+
+  it('honours the standard OPENAI_API_KEY when AMEM_LLM_API_KEY is unset', async () => {
+    openaiCreate.mockResolvedValue({ choices: [{ message: { content: 'ok' } }] })
+    const { llmCall } = await loadLlm({
+      AMEM_LLM_PROVIDER: 'openai',
+      AMEM_LLM_API_KEY: undefined,
+      OPENAI_API_KEY: 'sk-real-openai-key',
+    })
+
+    await llmCall('ping')
+
+    // Passing the placeholder would block the SDK's own env fallback → 401 on every call.
+    expect(OpenAICtor.mock.calls[0][0].apiKey).toBe('sk-real-openai-key')
   })
 
   it('uses max_completion_tokens for OpenAI reasoning models', async () => {
@@ -113,6 +131,30 @@ describe('llmCall provider dispatch', () => {
     const arg = openaiCreate.mock.calls[0][0]
     expect(arg.max_completion_tokens).toBe(200)
     expect(arg.max_tokens).toBeUndefined()
+  })
+
+  it('uses max_tokens (not max_completion_tokens) for deepseek-reasoner', async () => {
+    // deepseek-reasoner is a reasoning model but DeepSeek's API takes max_tokens;
+    // a broad includes('reason') match would send the wrong parameter.
+    openaiCreate.mockResolvedValue({ choices: [{ message: { content: 'ok' } }] })
+    const { llmCall } = await loadLlm({ AMEM_LLM_PROVIDER: 'openai', AMEM_LLM_MODEL: 'deepseek-reasoner' })
+
+    await llmCall('ping', 200)
+
+    const arg = openaiCreate.mock.calls[0][0]
+    expect(arg.max_tokens).toBe(200)
+    expect(arg.max_completion_tokens).toBeUndefined()
+  })
+
+  it('trims whitespace on AMEM_LLM_PROVIDER so "openai " still routes to OpenAI', async () => {
+    openaiCreate.mockResolvedValue({ choices: [{ message: { content: 'ok' } }] })
+    const { llmCall } = await loadLlm({ AMEM_LLM_PROVIDER: 'openai ' })
+
+    const out = await llmCall('ping')
+
+    expect(out).toBe('ok')
+    expect(openaiCreate).toHaveBeenCalledOnce()
+    expect(anthropicCreate).not.toHaveBeenCalled()
   })
 
   it('returns null (not throw) when the provider call rejects', async () => {
