@@ -11,7 +11,12 @@ concurrency:
 permissions:
   contents: write
   pull-requests: write
-  id-token: write # npm provenance (sigstore attestation)
+  # OIDC token for npm trusted publishing. pnpm exchanges it with npmjs.org for
+  # a short-lived publish token and attaches a sigstore provenance attestation —
+  # provided a trusted publisher is configured for each package on npmjs.com
+  # (repo + this workflow). Without that, pnpm falls back to NPM_TOKEN and skips
+  # provenance. Requires pnpm >= 11.11 (see packageManager).
+  id-token: write
 
 jobs:
   release:
@@ -50,10 +55,14 @@ jobs:
           commit: 'chore(release): version packages'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Fallback auth for when OIDC trusted publishing is unavailable. pnpm
+          # prefers OIDC when it can (and only then is provenance attached), so
+          # this token is used only if the OIDC exchange is skipped. It can be
+          # dropped once trusted publishing is confirmed working for every package.
+          # (NPM_CONFIG_PROVENANCE is intentionally absent: pnpm ignores it — its
+          # provenance comes from the OIDC path above, not that npm-CLI flag.)
           NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-          # Publish npm packages with provenance (needs id-token: write above).
-          NPM_CONFIG_PROVENANCE: 'true'
 
       # Mirror the plugin to ClawHub from the SAME freshly-built dist/ that was
       # just published to npm, so the two registries stay on the exact same
