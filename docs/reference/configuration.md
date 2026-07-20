@@ -71,9 +71,10 @@ These environment variables override plugin defaults at runtime. Useful for test
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `AMEM_LLM_MODEL` | `claude-sonnet-4-6` | LLM model used for note construction, CRUD decisions, link judgment, and memory evolution. Set to a Gemini model when running smoke tests to avoid consuming Claude quota. |
-| `AMEM_LLM_BASE_URL` | `https://api.anthropic.com` | Override the Anthropic SDK base URL (e.g. for a local proxy). |
-| `AMEM_LLM_API_KEY` | `ANTHROPIC_API_KEY` env | Override the API key. If unset, the SDK reads `ANTHROPIC_API_KEY` automatically. |
+| `AMEM_LLM_PROVIDER` | `anthropic` | Request format for LLM calls. `anthropic` uses the native Messages API; `openai` uses the Chat Completions API, which every OpenAI-compatible endpoint speaks (OpenAI, DeepSeek, OpenRouter, Groq, Together, Ollama, vLLM, LM Studio…). |
+| `AMEM_LLM_MODEL` | `claude-sonnet-4-6` (anthropic) · `gpt-4o-mini` (openai) | LLM model used for note construction, CRUD decisions, link judgment, and memory evolution. Set to a cheaper model when running smoke tests to avoid consuming production quota. |
+| `AMEM_LLM_BASE_URL` | provider default | Override the SDK base URL. Point it at your OpenAI-compatible gateway (with `AMEM_LLM_PROVIDER=openai`) or an Anthropic proxy. |
+| `AMEM_LLM_API_KEY` | provider env | Override the API key. If unset on the Anthropic path, the SDK reads `ANTHROPIC_API_KEY`; on the OpenAI path a placeholder is sent so keyless local servers (Ollama, vLLM) work. |
 | `AMEM_COLLECTION` | `amem_notes` | Qdrant collection name. Override to use a separate collection for testing. |
 | `AMEM_REVIEW_DIR` | `process.cwd()` | Output directory for quality review batch files. |
 | `AMEM_EVO_COUNTER_PATH` | `~/.openclaw/amem_evo_cnt.json` | File path for the evolution throttle counter. |
@@ -87,13 +88,29 @@ AMEM_LLM_MODEL=gemini-3.5-flash-low node run_smoketest.mjs
 
 ## LLM requirements
 
-The plugin uses the **Anthropic SDK** which connects to `https://api.anthropic.com` by default. Set `ANTHROPIC_API_KEY` (or `AMEM_LLM_API_KEY`) to authenticate. Use `AMEM_LLM_BASE_URL` to point to a compatible proxy.
+By default the engine uses the **Anthropic SDK** against `https://api.anthropic.com`. Set `ANTHROPIC_API_KEY` (or `AMEM_LLM_API_KEY`) to authenticate, and `AMEM_LLM_BASE_URL` to point at an Anthropic-compatible proxy.
 
-Any model that follows the Anthropic Messages API is supported. Recommended:
+To use an **OpenAI-compatible** provider instead, set `AMEM_LLM_PROVIDER=openai` and point `AMEM_LLM_BASE_URL` at its endpoint. This covers OpenAI, DeepSeek, OpenRouter, Groq, Together, and local servers (Ollama, vLLM, LM Studio). Reasoning models (`o1`, `o3`, `gpt-5`) are handled automatically.
+
+```bash
+# Example: DeepSeek
+AMEM_LLM_PROVIDER=openai \
+AMEM_LLM_BASE_URL=https://api.deepseek.com/v1 \
+AMEM_LLM_API_KEY=sk-... \
+AMEM_LLM_MODEL=deepseek-chat node run_smoketest.mjs
+
+# Example: local Ollama (no key needed)
+AMEM_LLM_PROVIDER=openai \
+AMEM_LLM_BASE_URL=http://localhost:11434/v1 \
+AMEM_LLM_MODEL=qwen2.5 node run_smoketest.mjs
+```
+
+Recommended models:
 
 | Use case | Model |
 |----------|-------|
-| Production | `claude-sonnet-4-6` |
+| Production (Anthropic) | `claude-sonnet-4-6` |
+| Production (OpenAI-compatible) | `gpt-4o-mini`, `deepseek-chat` |
 | Testing / smoke | `gemini-3.5-flash-low` |
 
 ## Qdrant collection schema

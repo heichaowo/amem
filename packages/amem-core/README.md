@@ -98,7 +98,7 @@ const hits = await searchMemory('what does the player like to build with?', 5, '
 
 - Node.js 24 (18+ works)
 - [Qdrant](https://qdrant.tech) on `:6333`
-- `ANTHROPIC_API_KEY` (or `AMEM_LLM_BASE_URL` for a compatible proxy) for note/link/evolution LLM calls
+- An LLM for note/link/evolution calls: `ANTHROPIC_API_KEY` by default, or set `AMEM_LLM_PROVIDER=openai` with `AMEM_LLM_BASE_URL` + `AMEM_LLM_API_KEY` to use any OpenAI-compatible endpoint (OpenAI, DeepSeek, OpenRouter, Ollama, vLLM…)
 
 ## References & Citation
 

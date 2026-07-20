@@ -17,8 +17,11 @@ export default defineConfig({
   clean: true,
   bundle: true,
   // @huggingface/transformers uses dynamic imports for ONNX backends
-  // bundling it breaks backend detection — keep as external
-  external: ['@huggingface/transformers', 'onnxruntime-node', 'openclaw', /^openclaw\/.+/],
+  // bundling it breaks backend detection — keep as external.
+  // openai is external too: bundling it inlines ~440KB into every plugin
+  // download, even for the default Anthropic path. It is a published package,
+  // so it installs at runtime from the plugin's dependencies like transformers.
+  external: ['@huggingface/transformers', 'onnxruntime-node', 'openai', 'openclaw', /^openclaw\/.+/],
   esbuildOptions(options) {
     // Everything in `dependencies` stays external and is installed at runtime;
     // only the engine is inlined, via this alias to its source.
