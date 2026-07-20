@@ -94,3 +94,32 @@ jobs:
             --changelog "$NOTE"
         env:
           CLAWHUB_TOKEN: ${{ secrets.CLAWHUB_TOKEN }}
+
+      # A ClawHub publish is async: the CLI submits the package (and prints
+      # "OK. Published …", so the step above succeeds) but ClawHub then scans it
+      # and only PROMOTES it to `latest` if the scan clears. A held version — e.g.
+      # an env var or endpoint the code uses but openclaw.plugin.json doesn't
+      # declare — leaves the previous version as `latest` while the publish step
+      # still reports success. Poll the public verdict and fail loudly so a hold
+      # is caught in CI instead of by hand.
+      - name: Verify ClawHub promoted the plugin
+        if: steps.changesets.outputs.published == 'true' && contains(steps.changesets.outputs.publishedPackages, 'openclaw-amem')
+        working-directory: packages/openclaw-amem
+        run: |
+          VER=$(node -p "require('./package.json').version")
+          echo "Waiting for ClawHub to promote openclaw-amem@$VER …"
+          for i in $(seq 1 24); do
+            # Unauthenticated inspect returns a version only once ClawHub has
+            # promoted it; a held/pending version errors with "Version not found".
+            if clawhub package inspect openclaw-amem --version "$VER" --json 2>/dev/null \
+                 | grep -q '"scanStatus"[[:space:]]*:[[:space:]]*"clean"'; then
+              echo "✓ openclaw-amem@$VER is live on ClawHub (scan: clean)"
+              exit 0
+            fi
+            echo "  attempt $i/24 — not promoted yet, retrying in 15s"
+            sleep 15
+          done
+          echo "::error::openclaw-amem@$VER reached npm but ClawHub did not promote it within ~6 min."
+          echo "ClawHub most likely held it — often an env var or endpoint used by the code but missing from openclaw.plugin.json."
+          echo "Check the verdict: clawhub package moderation-status openclaw-amem"
+          exit 1
