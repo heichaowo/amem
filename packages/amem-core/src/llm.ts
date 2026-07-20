@@ -12,7 +12,12 @@ import { t } from './prompts.js'
 // the native Messages API; `openai` speaks the Chat Completions API, which every
 // OpenAI-compatible gateway implements (OpenAI, DeepSeek, OpenRouter, Groq,
 // Together, Ollama, vLLM, LM Studio…). Point AMEM_LLM_BASE_URL at whichever one.
-const PROVIDER = (process.env.AMEM_LLM_PROVIDER ?? 'anthropic').toLowerCase()
+const PROVIDER = (process.env.AMEM_LLM_PROVIDER ?? 'anthropic').trim().toLowerCase()
+if (PROVIDER !== 'anthropic' && PROVIDER !== 'openai') {
+  // An unrecognised value silently routes to the anthropic path with the wrong
+  // model/endpoint — surface it instead of failing invisibly on every call.
+  console.error(`[amem] unknown AMEM_LLM_PROVIDER "${PROVIDER}"; falling back to anthropic`)
+}
 
 // override via env for smoketest/benchmark; sensible default per provider
 const MODEL = process.env.AMEM_LLM_MODEL ?? (PROVIDER === 'openai' ? 'gpt-4o-mini' : 'claude-sonnet-4-6')
@@ -33,7 +38,11 @@ function anthropic(): Anthropic {
 let _openai: OpenAI | null = null
 function openai(): OpenAI {
   return (_openai ??= new OpenAI({
-    apiKey: process.env.AMEM_LLM_API_KEY || 'sk-no-key-required',
+    // AMEM_LLM_API_KEY first (engine convention), then the SDK's own
+    // OPENAI_API_KEY (the standard) — passing an explicit key blocks the SDK's
+    // env fallback, so read it here. Placeholder last, so keyless local servers
+    // (Ollama, vLLM) still work.
+    apiKey: process.env.AMEM_LLM_API_KEY || process.env.OPENAI_API_KEY || 'sk-no-key-required',
     ...(process.env.AMEM_LLM_BASE_URL && { baseURL: process.env.AMEM_LLM_BASE_URL }),
   }))
 }
@@ -66,10 +75,12 @@ async function anthropicCall(prompt: string, maxTokens: number): Promise<string 
 }
 
 async function openaiCall(prompt: string, maxTokens: number): Promise<string | null> {
-  // Reasoning models (o1/o3, gpt-5) reject `max_tokens` and require
+  // OpenAI's own reasoning models (o1/o3, gpt-5) reject `max_tokens` and require
   // `max_completion_tokens`; everything else takes `max_tokens`. Same budget for
-  // our single-shot completions — only the parameter name differs.
-  const isReasoning = /^o\d/.test(MODEL) || MODEL.startsWith('gpt-5') || MODEL.includes('reason')
+  // our single-shot completions — only the parameter name differs. Match OpenAI
+  // names narrowly: a broad `includes('reason')` would wrongly catch other
+  // gateways' models (e.g. DeepSeek's `deepseek-reasoner`, which uses max_tokens).
+  const isReasoning = /^o\d/.test(MODEL) || MODEL.startsWith('gpt-5')
   const resp = await openai().chat.completions.create({
     model: MODEL,
     ...(isReasoning ? { max_completion_tokens: maxTokens } : { max_tokens: maxTokens }),
