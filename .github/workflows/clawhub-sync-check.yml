@@ -1,0 +1,73 @@
+name: ClawHub sync check
+
+# openclaw-amem is published to both npm and ClawHub. ClawHub scans every
+# code-plugin release asynchronously (static + LLM + VirusTotal), which takes
+# ~15-30 min, so it always lags npm briefly — that lag is normal, not a fault.
+# A GENUINE hold (e.g. a scan that never clears) is different: the lag persists.
+# This job runs on a schedule and only alerts when npm's latest has been out
+# far longer than any normal scan window but ClawHub still hasn't promoted it,
+# which cleanly separates "still scanning" from "actually stuck". The release
+# workflow deliberately does NOT poll for this — a short post-publish poll can't
+# tell a slow scan from a hold and just false-fails every release.
+
+on:
+  schedule:
+    - cron: '0 7 * * *' # daily 07:00 UTC
+  workflow_dispatch: {} # allow a manual check
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Compare npm and ClawHub latest for openclaw-amem
+        env:
+          # Hours npm's latest may lead ClawHub before it counts as a real hold.
+          # >> the ~15-30 min normal scan window, << the days a true hold lasts.
+          HOLD_THRESHOLD_HOURS: '6'
+        run: |
+          set -uo pipefail
+          PKG=openclaw-amem
+
+          NPM_LATEST=$(npm view "$PKG" version 2>/dev/null)
+          if [ -z "$NPM_LATEST" ]; then
+            echo "::warning::could not read $PKG version from npm — skipping this run"
+            exit 0
+          fi
+          # `npm view time.<ver>` splits on the dots in the version, so read the
+          # whole time map and pull the version's ISO timestamp out of it.
+          NPM_TIME=$(npm view "$PKG" time --json 2>/dev/null \
+            | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{try{console.log(JSON.parse(s)[process.argv[1]]||'')}catch{console.log('')}})" "$NPM_LATEST")
+          if [ -z "$NPM_TIME" ]; then
+            echo "::warning::could not read $PKG@$NPM_LATEST publish time from npm — skipping this run"
+            exit 0
+          fi
+
+          npm i -g clawhub@0.23.1 >/dev/null 2>&1
+          CLAW_LATEST=$(clawhub package moderation-status "$PKG" --json 2>/dev/null \
+            | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{try{console.log(JSON.parse(s).latestRelease?.version||'')}catch{console.log('')}})")
+          if [ -z "$CLAW_LATEST" ]; then
+            echo "::warning::could not read $PKG latest from ClawHub — skipping this run"
+            exit 0
+          fi
+
+          echo "npm:     $PKG@$NPM_LATEST (published $NPM_TIME)"
+          echo "ClawHub: $PKG@$CLAW_LATEST"
+
+          if [ "$NPM_LATEST" = "$CLAW_LATEST" ]; then
+            echo "✓ in sync"
+            exit 0
+          fi
+
+          AGE_H=$(node -e "console.log(Math.floor((Date.now()-Date.parse(process.argv[1]))/3600000))" "$NPM_TIME")
+          echo "Diverged — npm's $NPM_LATEST has been published for ${AGE_H}h."
+          if [ "$AGE_H" -lt "$HOLD_THRESHOLD_HOURS" ]; then
+            echo "::notice::within the normal ClawHub scan window (<${HOLD_THRESHOLD_HOURS}h); not alerting yet."
+            exit 0
+          fi
+
+          echo "::error::$PKG@$NPM_LATEST has been on npm for ${AGE_H}h but ClawHub still serves $CLAW_LATEST — likely a genuine ClawHub hold, not scan latency."
+          echo "Investigate the verdict: clawhub package moderation-status $PKG"
+          exit 1
