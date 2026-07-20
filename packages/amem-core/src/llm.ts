@@ -3,35 +3,79 @@
  */
 
 import Anthropic from '@anthropic-ai/sdk'
+import OpenAI from 'openai'
 import { t } from './prompts.js'
 
-// ── Client ────────────────────────────────────────────────────────────────────
-const client = new Anthropic({
-  ...(process.env.AMEM_LLM_API_KEY && { apiKey: process.env.AMEM_LLM_API_KEY }),
-  ...(process.env.AMEM_LLM_BASE_URL && { baseURL: process.env.AMEM_LLM_BASE_URL }),
-})
+// ── Provider selection ────────────────────────────────────────────────────────
+// The engine's LLM calls are all "prompt in, text out" — no streaming, tools, or
+// vision — so one env switch covers every backend. `anthropic` (default) keeps
+// the native Messages API; `openai` speaks the Chat Completions API, which every
+// OpenAI-compatible gateway implements (OpenAI, DeepSeek, OpenRouter, Groq,
+// Together, Ollama, vLLM, LM Studio…). Point AMEM_LLM_BASE_URL at whichever one.
+const PROVIDER = (process.env.AMEM_LLM_PROVIDER ?? 'anthropic').toLowerCase()
 
-const MODEL = process.env.AMEM_LLM_MODEL ?? 'claude-sonnet-4-6' // override via env for smoketest/benchmark
+// override via env for smoketest/benchmark; sensible default per provider
+const MODEL = process.env.AMEM_LLM_MODEL ?? (PROVIDER === 'openai' ? 'gpt-4o-mini' : 'claude-sonnet-4-6')
+
+// ── Clients (lazy) ────────────────────────────────────────────────────────────
+// Constructed on first use, not at import, so loading the engine never builds a
+// client for the provider you are not using — nor demands its API key. Local
+// OpenAI-compatible servers (Ollama, vLLM) accept any key, so a placeholder lets
+// them run keyless.
+let _anthropic: Anthropic | null = null
+function anthropic(): Anthropic {
+  return (_anthropic ??= new Anthropic({
+    ...(process.env.AMEM_LLM_API_KEY && { apiKey: process.env.AMEM_LLM_API_KEY }),
+    ...(process.env.AMEM_LLM_BASE_URL && { baseURL: process.env.AMEM_LLM_BASE_URL }),
+  }))
+}
+
+let _openai: OpenAI | null = null
+function openai(): OpenAI {
+  return (_openai ??= new OpenAI({
+    apiKey: process.env.AMEM_LLM_API_KEY || 'sk-no-key-required',
+    ...(process.env.AMEM_LLM_BASE_URL && { baseURL: process.env.AMEM_LLM_BASE_URL }),
+  }))
+}
 
 // ── Base LLM call ─────────────────────────────────────────────────────────────
 export async function llmCall(prompt: string, maxTokens = 500): Promise<string | null> {
+  // Gemini thinking models consume extra tokens for reasoning; scale up automatically
+  const isThinking = MODEL.includes('gemini') || MODEL.includes('pro-agent')
+  const effectiveMaxTokens = isThinking ? Math.max(maxTokens * 8, 4000) : maxTokens
   try {
-    // Gemini thinking models consume extra tokens for reasoning; scale up automatically
-    const isThinking = MODEL.includes('gemini') || MODEL.includes('pro-agent')
-    const effectiveMaxTokens = isThinking ? Math.max(maxTokens * 8, 4000) : maxTokens
-    const resp = await client.messages.create({
-      model: MODEL,
-      max_tokens: effectiveMaxTokens,
-      messages: [{ role: 'user', content: prompt }],
-    })
-    for (const block of resp.content) {
-      if (block.type === 'text') return block.text.trim()
-    }
-    return null
+    return PROVIDER === 'openai'
+      ? await openaiCall(prompt, effectiveMaxTokens)
+      : await anthropicCall(prompt, effectiveMaxTokens)
   } catch (e) {
     console.error(`[amem] LLM call failed: ${(e as Error).message}`)
     return null
   }
+}
+
+async function anthropicCall(prompt: string, maxTokens: number): Promise<string | null> {
+  const resp = await anthropic().messages.create({
+    model: MODEL,
+    max_tokens: maxTokens,
+    messages: [{ role: 'user', content: prompt }],
+  })
+  for (const block of resp.content) {
+    if (block.type === 'text') return block.text.trim()
+  }
+  return null
+}
+
+async function openaiCall(prompt: string, maxTokens: number): Promise<string | null> {
+  // Reasoning models (o1/o3, gpt-5) reject `max_tokens` and require
+  // `max_completion_tokens`; everything else takes `max_tokens`. Same budget for
+  // our single-shot completions — only the parameter name differs.
+  const isReasoning = /^o\d/.test(MODEL) || MODEL.startsWith('gpt-5') || MODEL.includes('reason')
+  const resp = await openai().chat.completions.create({
+    model: MODEL,
+    ...(isReasoning ? { max_completion_tokens: maxTokens } : { max_tokens: maxTokens }),
+    messages: [{ role: 'user', content: prompt }],
+  })
+  return resp.choices[0]?.message?.content?.trim() ?? null
 }
 
 // ── Strip markdown fences ─────────────────────────────────────────────────────

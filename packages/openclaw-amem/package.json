@@ -33,6 +33,7 @@
     "@node-rs/jieba": "^2.0.1",
     "@qdrant/js-client-rest": "^1.18.0",
     "@types/uuid": "^11.0.0",
+    "openai": "^6.48.0",
     "uuid": "^14.0.0"
   },
   "devDependencies": {
