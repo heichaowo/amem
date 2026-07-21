@@ -48,6 +48,12 @@ jobs:
       - name: Assert no published package depends on a private one
         run: node tools/assert-no-private-deps.mjs
 
+      # Every env var the bundled code reads must be declared in the plugin
+      # manifest (or ClawHub silently holds the release, as it did for 1.2.0) and
+      # documented in the config reference (or the wiki drifts). Keeps them synced.
+      - name: Assert env vars are declared and documented
+        run: node tools/assert-env-vars-documented.mjs
+
       - name: Format check
         run: pnpm format
 
