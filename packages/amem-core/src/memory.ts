@@ -9,10 +9,18 @@ import * as fs from 'fs'
 import * as path from 'path'
 import { encode, cosineSimilarity } from './embedding.js'
 import { createStorageContext, type MemoryNote, type StorageContext } from './storage.js'
+import { canWrite } from './auth.js'
 import { llmConstructNote, llmShouldLink, llmEvolveNote, llmShouldMerge, llmEvolutionJudge } from './llm.js'
 import { shouldRunEvolution } from './evo-counter.js'
 import { getDataDir } from './config.js'
 import { Jieba } from '@node-rs/jieba'
+
+/**
+ * Strip line breaks from an identifier before it reaches a log line. Agent ids
+ * come from session/config input and these logs go to a plain console, so a
+ * crafted id could otherwise forge extra log entries (CodeQL: js/log-injection).
+ */
+const logSafe = (id: string): string => id.replace(/[\r\n]/g, '')
 
 // ── BM25 helpers ──────────────────────────────────────────────────────────────
 
@@ -178,9 +186,17 @@ export async function addMemory(
   // ── Layer 2: High-similarity vector dedup (UPDATE instead of INSERT) ─────────
   const topMatch = await ctx.queryByEmbedding(embedding, 1, agentId, 0.0)
   if (topMatch.length > 0 && topMatch[0].score >= 0.85) {
-    console.log(`[add] dedup: high-sim match (sim=${topMatch[0].score.toFixed(3)}), updating existing`)
-    await ctx.updateNoteContent(topMatch[0].note.id, content, embedding, hash)
-    return topMatch[0].note.id
+    // Story 33: the query also returns SHARED notes owned by other agents. Only
+    // fold into the match when we may write it; otherwise fall through and insert
+    // our own note rather than overwriting someone else's memory.
+    if (canWrite(topMatch[0].note, agentId)) {
+      console.log(`[add] dedup: high-sim match (sim=${topMatch[0].score.toFixed(3)}), updating existing`)
+      await ctx.updateNoteContent(topMatch[0].note.id, content, embedding, hash)
+      return topMatch[0].note.id
+    }
+    console.log(
+      `[add] dedup: high-sim match ${topMatch[0].note.id.slice(0, 8)} is not writable by ${logSafe(agentId)} — inserting a new note instead`
+    )
   }
 
   // ── Layer 2b: Pending merge flag for borderline similarity (0.72-0.85) ──────
@@ -259,10 +275,16 @@ export async function addMemory(
         note.links = linkedIds
         await ctx.updateNote(note)
 
-        // Bidirectional links
+        // Bidirectional links — Story 33: only write the back-link into notes we
+        // may write. A linked note can be another agent's shared note; the forward
+        // link on our own note still stands.
         for (const lid of linkedIds) {
           const linked = await ctx.getNote(lid)
           if (linked && !linked.links.includes(note.id)) {
+            if (!canWrite(linked, agentId)) {
+              console.log(`[link] back-link into ${lid.slice(0, 8)} skipped — not writable by ${logSafe(agentId)}`)
+              continue
+            }
             linked.links.push(note.id)
             await ctx.updateNote(linked)
           }
@@ -274,6 +296,13 @@ export async function addMemory(
           for (const lid of linkedIds.slice(0, 3)) {
             const linked = await ctx.getNote(lid)
             if (!linked) continue
+            // Story 33: evolution rewrites the linked note's tags/context/embedding.
+            // Skip notes we may not write (e.g. another agent's shared note) — this
+            // one check covers every mutation the evolution of `linked` would make.
+            if (!canWrite(linked, agentId)) {
+              console.log(`  [evo] skipping ${lid.slice(0, 8)} — not writable by ${logSafe(agentId)}`)
+              continue
+            }
 
             // Gather link contents and IDs
             const linkedNotes: Array<{ id: string; content: string }> = []
@@ -328,8 +357,14 @@ export async function addMemory(
                 }
                 const target = await ctx.getNote(targetId)
                 if (target && !target.links.includes(note.id)) {
-                  target.links.push(note.id)
-                  await ctx.updateNote(target)
+                  // Story 33: strengthen reaches notes via the link neighbourhood,
+                  // which can include notes this agent may not write.
+                  if (canWrite(target, agentId)) {
+                    target.links.push(note.id)
+                    await ctx.updateNote(target)
+                  } else {
+                    console.log(`  [evo] strengthen back-link into ${targetId.slice(0, 8)} skipped — not writable`)
+                  }
                 }
               }
               // 2. 更新新写入 memory 的 note.tags

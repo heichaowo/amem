@@ -4,6 +4,8 @@
  * Collection: amem_notes, 384-dim cosine, with agent_id isolation
  */
 
+import { canWrite } from './auth.js'
+
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 // ── Story 32: Per-agent config types ──────────────────────────────────────────
@@ -367,8 +369,26 @@ function makeCrud(collectionName: string, modeBIsolated = false) {
       return pointToNote(result.points[0])
     },
 
-    async updateNoteContent(id: string, content: string, embedding: number[], hash: string): Promise<void> {
+    /**
+     * Story 33: pass `callerAgentId` to enforce the writers policy. Callers that
+     * hold the note already should prefer checking `canWrite` themselves; this
+     * fetch-then-check path exists for callers that only have an id (the plugin's
+     * CRUD hook). Returns false — without writing — when the caller may not write.
+     * Omitting `callerAgentId` skips the check, preserving existing behaviour for
+     * internal callers that are already scoped to their own notes.
+     */
+    async updateNoteContent(
+      id: string,
+      content: string,
+      embedding: number[],
+      hash: string,
+      callerAgentId?: string
+    ): Promise<boolean> {
       await ensureCollection(col)
+      if (callerAgentId !== undefined) {
+        const existing = await this.getNote(id)
+        if (existing && !canWrite(existing, callerAgentId)) return false
+      }
       await qdrant('PUT', `/collections/${col}/points/vectors?wait=true`, {
         points: [{ id, vector: embedding }],
       })
@@ -376,6 +396,7 @@ function makeCrud(collectionName: string, modeBIsolated = false) {
         payload: { content, hash },
         points: [id],
       })
+      return true
     },
 
     async queryByEmbedding(
@@ -451,12 +472,18 @@ function makeCrud(collectionName: string, modeBIsolated = false) {
       })
     },
 
-    async invalidateNote(id: string): Promise<void> {
+    /** Story 33: see `updateNoteContent` — returns false, unwritten, when denied. */
+    async invalidateNote(id: string, callerAgentId?: string): Promise<boolean> {
       await ensureCollection(col)
+      if (callerAgentId !== undefined) {
+        const existing = await this.getNote(id)
+        if (existing && !canWrite(existing, callerAgentId)) return false
+      }
       await qdrant('POST', `/collections/${col}/points/payload?wait=true`, {
         payload: { is_active: false },
         points: [id],
       })
+      return true
     },
 
     async getNotesByDatePrefix(datePrefix: string, agentId: string): Promise<MemoryNote[]> {
@@ -509,6 +536,11 @@ function makeCrud(collectionName: string, modeBIsolated = false) {
     async replaceLinkReferences(oldId: string, newId: string, agentId: string): Promise<void> {
       const notes = await this.listNotes(agentId)
       for (const note of notes) {
+        // Story 33: listNotes also returns other agents' shared notes. Rewriting
+        // their links is a mutation we may not be authorized to make; leaving the
+        // stale link is harmless (it points at an invalidated note, which queries
+        // already filter out).
+        if (!canWrite(note, agentId)) continue
         if (note.links.includes(oldId)) {
           const newLinks = note.links.map((linkId) => (linkId === oldId ? newId : linkId))
           const filteredLinks = newLinks.filter((linkId) => linkId !== note.id)
@@ -549,8 +581,14 @@ export async function findByHash(hash: string, agentId: string): Promise<MemoryN
   return makeCrud(getCollection()).findByHash(hash, agentId)
 }
 
-export async function updateNoteContent(id: string, content: string, embedding: number[], hash: string): Promise<void> {
-  return makeCrud(getCollection()).updateNoteContent(id, content, embedding, hash)
+export async function updateNoteContent(
+  id: string,
+  content: string,
+  embedding: number[],
+  hash: string,
+  callerAgentId?: string
+): Promise<boolean> {
+  return makeCrud(getCollection()).updateNoteContent(id, content, embedding, hash, callerAgentId)
 }
 
 export async function queryByEmbedding(
@@ -570,8 +608,8 @@ export async function deleteNote(id: string): Promise<void> {
   return makeCrud(getCollection()).deleteNote(id)
 }
 
-export async function invalidateNote(id: string): Promise<void> {
-  return makeCrud(getCollection()).invalidateNote(id)
+export async function invalidateNote(id: string, callerAgentId?: string): Promise<boolean> {
+  return makeCrud(getCollection()).invalidateNote(id, callerAgentId)
 }
 
 export async function getNotesByDatePrefix(datePrefix: string, agentId: string): Promise<MemoryNote[]> {
