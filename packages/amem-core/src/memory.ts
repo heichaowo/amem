@@ -15,6 +15,13 @@ import { shouldRunEvolution } from './evo-counter.js'
 import { getDataDir } from './config.js'
 import { Jieba } from '@node-rs/jieba'
 
+/**
+ * Strip line breaks from an identifier before it reaches a log line. Agent ids
+ * come from session/config input and these logs go to a plain console, so a
+ * crafted id could otherwise forge extra log entries (CodeQL: js/log-injection).
+ */
+const logSafe = (id: string): string => id.replace(/[\r\n]/g, '')
+
 // ── BM25 helpers ──────────────────────────────────────────────────────────────
 
 // Lazy-initialized Jieba instance (Story 21: Chinese word segmentation)
@@ -188,7 +195,7 @@ export async function addMemory(
       return topMatch[0].note.id
     }
     console.log(
-      `[add] dedup: high-sim match ${topMatch[0].note.id.slice(0, 8)} is not writable by ${agentId} — inserting a new note instead`
+      `[add] dedup: high-sim match ${topMatch[0].note.id.slice(0, 8)} is not writable by ${logSafe(agentId)} — inserting a new note instead`
     )
   }
 
@@ -275,7 +282,7 @@ export async function addMemory(
           const linked = await ctx.getNote(lid)
           if (linked && !linked.links.includes(note.id)) {
             if (!canWrite(linked, agentId)) {
-              console.log(`[link] back-link into ${lid.slice(0, 8)} skipped — not writable by ${agentId}`)
+              console.log(`[link] back-link into ${lid.slice(0, 8)} skipped — not writable by ${logSafe(agentId)}`)
               continue
             }
             linked.links.push(note.id)
@@ -293,7 +300,7 @@ export async function addMemory(
             // Skip notes we may not write (e.g. another agent's shared note) — this
             // one check covers every mutation the evolution of `linked` would make.
             if (!canWrite(linked, agentId)) {
-              console.log(`  [evo] skipping ${lid.slice(0, 8)} — not writable by ${agentId}`)
+              console.log(`  [evo] skipping ${lid.slice(0, 8)} — not writable by ${logSafe(agentId)}`)
               continue
             }
 
