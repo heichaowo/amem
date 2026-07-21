@@ -454,7 +454,13 @@ function register(api: {
               if (target) {
                 const newEmbedding = await encode(op.fact)
                 const hash = createHash('md5').update(op.fact).digest('hex')
-                await storageCtx.updateNoteContent(target.id, op.fact, newEmbedding, hash)
+                // Story 33: search also returns other agents' shared notes; passing
+                // agentId makes the engine refuse to write ones we do not own.
+                const ok = await storageCtx.updateNoteContent(target.id, op.fact, newEmbedding, hash, agentId)
+                if (!ok) {
+                  logger.warn(`openclaw-amem: CRUD UPDATE denied id=${target.id.slice(0, 8)} — ${agentId} not in writers`)
+                  continue
+                }
                 logger.info(
                   `openclaw-amem: CRUD UPDATE id=${target.id.slice(0, 8)}: "${op.fact.slice(0, 60)}${op.fact.length > 60 ? '...' : ''}"`
                 )
@@ -462,7 +468,11 @@ function register(api: {
             } else if (op.action === 'DELETE' && op.existingIdx !== undefined) {
               const target = existingMemories[op.existingIdx]
               if (target) {
-                await storageCtx.invalidateNote(target.id)
+                const ok = await storageCtx.invalidateNote(target.id, agentId)
+                if (!ok) {
+                  logger.warn(`openclaw-amem: CRUD DELETE denied id=${target.id.slice(0, 8)} — ${agentId} not in writers`)
+                  continue
+                }
                 logger.info(
                   `openclaw-amem: CRUD INVALIDATE id=${target.id.slice(0, 8)}: "${op.fact.slice(0, 60)}${op.fact.length > 60 ? '...' : ''}"`
                 )

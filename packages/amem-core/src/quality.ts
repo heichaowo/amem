@@ -5,6 +5,7 @@
 import * as fs from 'fs'
 import * as path from 'path'
 import { listNotes, patchNotePayload, type MemoryNote } from './storage.js'
+import { canWrite } from './auth.js'
 import type { PromptLocale } from './prompts.js'
 
 const LOCALE: PromptLocale = (process.env.AMEM_PROMPT_LOCALE as PromptLocale) === 'zh' ? 'zh' : 'en'
@@ -27,6 +28,11 @@ export async function scanLowQuality(agentId: string): Promise<LowQualityItem[]>
   const results: LowQualityItem[] = []
 
   for (const note of notes) {
+    // Story 33: listNotes also returns SHARED notes owned by other agents. Quality
+    // enforcement marks notes low_quality, so scan only what this agent may write —
+    // flagging a note we cannot act on would be noise, and patching it a violation.
+    if (!canWrite(note, agentId)) continue
+
     const reasons: LowQualityReason[] = []
 
     if (note.content.trim().length < 10) {
