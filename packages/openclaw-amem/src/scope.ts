@@ -10,7 +10,7 @@
  * `amem` engine (the `amem` imports below are type-only, and buildScope takes
  * `createStorageContext` as an injected argument) so they can be unit-tested
  * without loading the heavy embedding / storage / LLM modules — the same reason
- * hook-liveness.ts lives on its own.
+ * conv-access.ts lives on its own.
  */
 
 import type { AmemPluginConfig, StorageContext } from '@heichaowo/amem-core'

@@ -26,7 +26,7 @@ import {
   type AmemPluginConfig,
 } from '@heichaowo/amem-core'
 import { createHash } from 'crypto'
-import { hookLiveness, markHookFired, hookNeverFiredWarning } from './hook-liveness.js'
+import { isConvAccessBlocked, BLOCKED_WARNING_LOG, BLOCKED_WARNING_SUFFIX } from './conv-access.js'
 import {
   resolveAgentId as resolveAgentIdWith,
   buildScope as buildScopeWith,
@@ -47,9 +47,15 @@ function register(api: {
   registerService?: (svc: unknown) => void
 }) {
   const logger = api.logger
-  hookLiveness() // anchor the process-wide hook-liveness clock at plugin load
   _config = (api.pluginConfig as Record<string, unknown>) || {}
   const pluginConfig = _config as AmemPluginConfig
+
+  // Is automatic memory write-back (the agent_end hook) allowed? The flag lives in
+  // the FULL openclaw.json (`api.config`), not `api.pluginConfig`. Read it once, at
+  // startup, so we know for certain — no timer, no heuristic (see conv-access.ts).
+  const pluginId = (api as unknown as { id?: string }).id ?? 'openclaw-amem'
+  const convBlocked = isConvAccessBlocked((api as unknown as { config?: unknown }).config, pluginId)
+  if (convBlocked) logger.warn(BLOCKED_WARNING_LOG)
 
   // Preserve the plugin's existing on-disk data location (evo counter + consolidation logs).
   configure({ dataDir: path.join(os.homedir(), '.openclaw') })
@@ -173,9 +179,9 @@ function register(api: {
           async execute(_toolCallId: string, params: { query: string; limit?: number; topicsFilter?: string[] }) {
             const { query, limit = 5, topicsFilter } = params
             const start = Date.now()
-            // Story 34 (v1.0.1): warn only if the agent_end hook has never fired
-            // on ANY instance in this process (reload-stable; see hookNeverFiredWarning).
-            const hookWarning = hookNeverFiredWarning()
+            // If write-back is off, append the notice so the assistant relays it to
+            // the user (a plugin's most user-visible channel). Determined at startup.
+            const hookWarning = convBlocked ? BLOCKED_WARNING_SUFFIX : ''
             try {
               const results = await searchMemory(query, limit, scope.agentId, {
                 topicsFilter,
@@ -376,7 +382,6 @@ function register(api: {
         },
         ctx?: AgentCtx
       ) => {
-        markHookFired()
         // Story 32 (Issue 1): resolve the per-session agent scope from the hook ctx.
         const scope = buildScope(resolveAgentId(ctx))
         const agentId = scope.agentId
@@ -488,20 +493,6 @@ function register(api: {
       { timeoutMs: 30000 }
     )
     logger.info('openclaw-amem: agent_end CRUD decision hook registered')
-
-    // Story 34: 10min self-check — warn if hook never fired (likely blocked)
-    setTimeout(
-      () => {
-        if (!hookLiveness().everFired) {
-          logger.warn(
-            '⚠️ openclaw-amem: agent_end hook has never fired in 10 minutes. ' +
-              'It may be blocked by OpenClaw security policy. ' +
-              'Add to openclaw.json: plugins.entries.openclaw-amem.hooks.allowConversationAccess=true'
-          )
-        }
-      },
-      10 * 60 * 1000
-    )
   }
 
   // ── scheduleNextRun ──────────────────────────────────────────────────────
@@ -554,7 +545,6 @@ const plugin = definePluginEntry({
 
 export default plugin
 export { register }
-export { hookLiveness, markHookFired, hookNeverFiredWarning } from './hook-liveness.js'
 export {
   addMemory,
   searchMemory,
