@@ -52,10 +52,11 @@ export {
   type AgentAmemConfig,
 } from './storage.js'
 
-// ── Access control (Story 33) ────────────────────────────────────────────────
-// The one write-authorization rule. Consumers that mutate notes they did not
-// fetch themselves (a service, a game brain) should gate on this too.
-export { canWrite } from './auth.js'
+// ── Access control (Story 33 / 36) ───────────────────────────────────────────
+// The two authorization rules. Consumers that mutate notes they did not fetch
+// themselves (a service, a game brain) should gate on `canWrite`; anything that
+// serves a note fetched by id — a REST get-by-id, a graph walk — on `canRead`.
+export { canWrite, canRead } from './auth.js'
 
 // ── LLM (one host-facing helper; the rest of the LLM layer is internal) ───────
 export { llmCrudDecision, type MemoryOperation } from './llm.js'
