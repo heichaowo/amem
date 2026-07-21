@@ -458,7 +458,9 @@ function register(api: {
                 // agentId makes the engine refuse to write ones we do not own.
                 const ok = await storageCtx.updateNoteContent(target.id, op.fact, newEmbedding, hash, agentId)
                 if (!ok) {
-                  logger.warn(`openclaw-amem: CRUD UPDATE denied id=${target.id.slice(0, 8)} — ${agentId} not in writers`)
+                  logger.warn(
+                    `openclaw-amem: CRUD UPDATE denied id=${target.id.slice(0, 8)} — ${agentId} not in writers`
+                  )
                   continue
                 }
                 logger.info(
@@ -470,7 +472,9 @@ function register(api: {
               if (target) {
                 const ok = await storageCtx.invalidateNote(target.id, agentId)
                 if (!ok) {
-                  logger.warn(`openclaw-amem: CRUD DELETE denied id=${target.id.slice(0, 8)} — ${agentId} not in writers`)
+                  logger.warn(
+                    `openclaw-amem: CRUD DELETE denied id=${target.id.slice(0, 8)} — ${agentId} not in writers`
+                  )
                   continue
                 }
                 logger.info(
