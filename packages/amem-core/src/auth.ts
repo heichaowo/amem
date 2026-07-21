@@ -23,3 +23,19 @@ import type { MemoryNote } from './storage.js'
 export function canWrite(note: Pick<MemoryNote, 'owner' | 'writers'>, callerAgentId: string): boolean {
   return note.owner === callerAgentId || note.writers.includes(callerAgentId) || note.writers.includes('*')
 }
+
+/**
+ * May `callerAgentId` read `note`? (Story 36 — the read half of the protocol.)
+ *
+ * True when the caller owns it, is listed in `readers`, or the note is public
+ * (`readers` contains `'*'`, which is how a shared-scope write is stored).
+ *
+ * Queries already filter by `agent_id`, so list/search paths never surface an
+ * unreadable note. This guards the one primitive that bypasses that filter —
+ * `getNote(id)` fetches straight by UUID — and the link-neighbourhood walks that
+ * use it: a shared note's `links[]` can name its owner's PRIVATE notes, so
+ * following those links would otherwise read memory the caller may not see.
+ */
+export function canRead(note: Pick<MemoryNote, 'owner' | 'readers'>, callerAgentId: string): boolean {
+  return note.owner === callerAgentId || note.readers.includes(callerAgentId) || note.readers.includes('*')
+}

@@ -304,11 +304,14 @@ export async function addMemory(
               continue
             }
 
-            // Gather link contents and IDs
+            // Gather link contents and IDs — Story 36: `linked` may be a shared
+            // note whose links name its owner's private notes. Reading by id
+            // bypasses the agent filter, so pass the caller; unreadable
+            // neighbours come back null and never reach the LLM prompt.
             const linkedNotes: Array<{ id: string; content: string }> = []
             for (const llid of linked.links.slice(0, 5)) {
               if (llid === note.id) continue
-              const ln = await ctx.getNote(llid)
+              const ln = await ctx.getNote(llid, agentId)
               if (ln) linkedNotes.push({ id: ln.id, content: ln.content })
             }
             linkedNotes.push({ id: note.id, content }) // new note exactly once
@@ -355,7 +358,9 @@ export async function addMemory(
                   note.links.push(targetId)
                   noteChanged = true
                 }
-                const target = await ctx.getNote(targetId)
+                // Story 36: targetId comes from the LLM's suggestedConnections —
+                // an arbitrary id, not something the agent filter vetted.
+                const target = await ctx.getNote(targetId, agentId)
                 if (target && !target.links.includes(note.id)) {
                   // Story 33: strengthen reaches notes via the link neighbourhood,
                   // which can include notes this agent may not write.

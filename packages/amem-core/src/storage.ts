@@ -4,7 +4,7 @@
  * Collection: amem_notes, 384-dim cosine, with agent_id isolation
  */
 
-import { canWrite } from './auth.js'
+import { canWrite, canRead } from './auth.js'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -317,7 +317,14 @@ function makeCrud(collectionName: string, modeBIsolated = false) {
       })
     },
 
-    async getNote(id: string): Promise<MemoryNote | null> {
+    /**
+     * Story 36: this is the one read that bypasses the agent filter — it fetches
+     * straight by UUID. Pass `readerAgentId` to enforce `readers`; an unreadable
+     * note comes back as `null` (indistinguishable from missing, so nothing leaks,
+     * and callers already handle null). Omitting it skips the check, preserving
+     * behaviour for internal callers that only ever hold their own ids.
+     */
+    async getNote(id: string, readerAgentId?: string): Promise<MemoryNote | null> {
       await ensureCollection(col)
       try {
         const result = (await qdrant('POST', `/collections/${col}/points`, {
@@ -326,7 +333,9 @@ function makeCrud(collectionName: string, modeBIsolated = false) {
           with_vector: true,
         })) as Array<{ id: string; payload: Record<string, unknown>; vector: number[] }>
         if (!result.length) return null
-        return pointToNote(result[0])
+        const note = pointToNote(result[0])
+        if (readerAgentId !== undefined && !canRead(note, readerAgentId)) return null
+        return note
       } catch {
         return null
       }
@@ -569,8 +578,8 @@ export async function addNote(note: MemoryNote): Promise<void> {
   return makeCrud(getCollection()).addNote(note)
 }
 
-export async function getNote(id: string): Promise<MemoryNote | null> {
-  return makeCrud(getCollection()).getNote(id)
+export async function getNote(id: string, readerAgentId?: string): Promise<MemoryNote | null> {
+  return makeCrud(getCollection()).getNote(id, readerAgentId)
 }
 
 export async function updateNote(note: MemoryNote): Promise<void> {
