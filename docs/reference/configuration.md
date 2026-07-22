@@ -25,7 +25,52 @@
 | `agentId` | `string` | `"main"` | Agent namespace for memory isolation. Notes from different agents are stored separately in Qdrant. |
 | `topK` | `number` | `5` | Maximum memories returned by `memory_search`. |
 | `agents` | `Record<string, {agentId?, collection?}>` | `{}` | Per-agent overrides. Set `collection` for Mode B physical isolation. |
+| `llmProvider` | `"anthropic" \| "openai"` | `"anthropic"` | Request format for the engine's own LLM calls. See [LLM settings](#llm-settings) below. |
+| `llmModel` | `string` | `claude-sonnet-4-6` (anthropic) · `gpt-4o-mini` (openai) | Model used for note construction, linking and evolution. |
+| `llmBaseURL` | `string` | provider default | Endpoint for LLM calls, e.g. an OpenAI-compatible gateway. |
 | `hooks.allowConversationAccess` | `boolean` | `false` | Required for `agent_end` hook access. Set under `plugins.entries.openclaw-amem.hooks`, not under `config`. Without this, automatic memory write-back is silently blocked by OpenClaw. |
+
+### LLM settings
+
+The engine makes its own small LLM calls — extracting keywords and tags, judging
+whether two notes should link, evolving a neighbourhood. You can point those at a
+different model or endpoint than the one your agent session uses:
+
+```json
+{
+  "plugins": {
+    "entries": {
+      "openclaw-amem": {
+        "enabled": true,
+        "config": {
+          "llmProvider": "openai",
+          "llmModel": "gpt-4o-mini",
+          "llmBaseURL": "http://localhost:11434/v1"
+        }
+      }
+    }
+  }
+}
+```
+
+**Precedence**, highest first:
+
+1. the environment variable (`AMEM_LLM_PROVIDER`, `AMEM_LLM_MODEL`, `AMEM_LLM_BASE_URL`)
+2. the plugin config keys above
+3. the built-in default for the provider
+
+An environment variable set to an empty string counts as unset, so it cannot
+silently shadow your config.
+
+> **API keys are not configurable here, by design.** Keys are read from the
+> environment only (`AMEM_LLM_API_KEY`, or the provider's own variable). A key
+> field in `openclaw.json` would make the memory engine a channel for your
+> credentials; endpoint and model are enough to route a call.
+
+These are explicit settings — the engine does **not** currently follow whichever
+model your agent session is using. That is deliberate: these are cheap,
+high-frequency utility calls, and inheriting a large reasoning model would make
+every memory write slow and expensive.
 
 ### Per-agent configuration (`agents`)
 

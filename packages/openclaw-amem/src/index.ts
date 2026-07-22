@@ -23,6 +23,7 @@ import {
   encode,
   generateReviewBatch,
   configure,
+  configureLlm,
   type AmemPluginConfig,
 } from '@heichaowo/amem-core'
 import { createHash } from 'crypto'
@@ -59,6 +60,17 @@ function register(api: {
 
   // Preserve the plugin's existing on-disk data location (evo counter + consolidation logs).
   configure({ dataDir: path.join(os.homedir(), '.openclaw') })
+
+  // Story 35: let openclaw.json pick the model without setting env vars. Env
+  // vars still win, and an unset key falls through to the engine's default, so
+  // configuring none of these leaves behaviour exactly as it was.
+  if (pluginConfig.llmProvider || pluginConfig.llmModel || pluginConfig.llmBaseURL) {
+    configureLlm({
+      provider: pluginConfig.llmProvider,
+      model: pluginConfig.llmModel,
+      baseURL: pluginConfig.llmBaseURL,
+    })
+  }
 
   // ── Story 32 (Issue 1): per-agent scope resolved PER CALL, not at register ────
   // The runtime per-session agentId is only present on each interface's ctx, not
