@@ -90,6 +90,20 @@
         "type": "string",
         "description": "Qdrant collection name (mode A shared default)."
       },
+      "llmProvider": {
+        "type": "string",
+        "enum": ["anthropic", "openai"],
+        "default": "anthropic",
+        "description": "LLM API dialect for the engine's own calls. Overridden by AMEM_LLM_PROVIDER."
+      },
+      "llmModel": {
+        "type": "string",
+        "description": "Model the engine uses for note construction, linking and evolution. Overridden by AMEM_LLM_MODEL. Defaults to claude-sonnet-4-6 (anthropic) or gpt-4o-mini (openai)."
+      },
+      "llmBaseURL": {
+        "type": "string",
+        "description": "Base URL for the LLM endpoint, e.g. an OpenAI-compatible gateway. Overridden by AMEM_LLM_BASE_URL. API keys are read from the environment only and cannot be set here."
+      },
       "agents": {
         "type": "object",
         "description": "Per-agent overrides keyed by agentId.",

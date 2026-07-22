@@ -23,6 +23,12 @@ export interface AmemPluginConfig {
   topK?: number
   /** Per-agent overrides keyed by agentId */
   agents?: Record<string, AgentAmemConfig>
+  // ── Story 35: LLM settings, so a host can pick the model without env vars ────
+  // Env vars still win over all three. There is deliberately no key field — see
+  // the precedence note in llm.ts.
+  llmProvider?: string
+  llmModel?: string
+  llmBaseURL?: string
 }
 
 /** One entry in a note's evolution history (Story 13-B) */

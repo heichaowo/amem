@@ -8,19 +8,84 @@ import { t } from './prompts.js'
 
 // ── Provider selection ────────────────────────────────────────────────────────
 // The engine's LLM calls are all "prompt in, text out" — no streaming, tools, or
-// vision — so one env switch covers every backend. `anthropic` (default) keeps
-// the native Messages API; `openai` speaks the Chat Completions API, which every
+// vision — so one switch covers every backend. `anthropic` (default) keeps the
+// native Messages API; `openai` speaks the Chat Completions API, which every
 // OpenAI-compatible gateway implements (OpenAI, DeepSeek, OpenRouter, Groq,
-// Together, Ollama, vLLM, LM Studio…). Point AMEM_LLM_BASE_URL at whichever one.
-const PROVIDER = (process.env.AMEM_LLM_PROVIDER ?? 'anthropic').trim().toLowerCase()
-if (PROVIDER !== 'anthropic' && PROVIDER !== 'openai') {
-  // An unrecognised value silently routes to the anthropic path with the wrong
-  // model/endpoint — surface it instead of failing invisibly on every call.
-  console.error(`[amem] unknown AMEM_LLM_PROVIDER "${PROVIDER}"; falling back to anthropic`)
+// Together, Ollama, vLLM, LM Studio…). Point the base URL at whichever one.
+//
+// Story 35: these used to be top-level consts, which froze the choice at import
+// and left a host with no way in short of relaunching the process. They are now
+// resolved per call, so a host can hand the engine a model through
+// `configureLlm()` after import. Precedence, highest first:
+//
+//   1. environment variable        — the operator's override, always wins
+//   2. configureLlm()              — what the host (e.g. openclaw.json) asked for
+//   3. built-in default            — per provider
+//
+// Note what is deliberately absent: there is no way to inject an API key. Keys
+// come from the environment only. Configuration arrives from a host config file,
+// and an apiKey field here would be an invitation to pipe a user's credentials
+// out of that file and into the memory engine. Endpoint and model, yes; secrets,
+// no.
+
+/** Runtime LLM settings a host may inject. See the precedence note above. */
+export interface LlmConfig {
+  provider?: string
+  model?: string
+  baseURL?: string
 }
 
-// override via env for smoketest/benchmark; sensible default per provider
-const MODEL = process.env.AMEM_LLM_MODEL ?? (PROVIDER === 'openai' ? 'gpt-4o-mini' : 'claude-sonnet-4-6')
+let _override: LlmConfig = {}
+
+/**
+ * Point the engine's LLM calls at a provider/model/endpoint chosen by the host.
+ *
+ * Environment variables still win over anything passed here, and any field left
+ * undefined falls through to the default — so `configureLlm({ model })` changes
+ * only the model. Safe to call before or after the first LLM call.
+ */
+export function configureLlm(cfg: LlmConfig): void {
+  _override = { ...cfg }
+  // The clients capture the base URL and key chain at construction, so a cached
+  // one would keep talking to the old endpoint. Drop them and let the next call
+  // rebuild against the new settings.
+  _anthropic = null
+  _openai = null
+}
+
+// Resolution runs on every call, so a bad provider value would log on every call.
+const _warned = new Set<string>()
+function warnOnce(key: string, message: string): void {
+  if (_warned.has(key)) return
+  _warned.add(key)
+  console.error(message)
+}
+
+// `||`, not `??`, on purpose: an env var set to the empty string means "unset"
+// here. With `??` an exported-but-empty AMEM_LLM_MODEL would outrank a perfectly
+// valid model from openclaw.json and silently win, which is a miserable thing to
+// debug.
+function resolveProvider(): string {
+  const p = (process.env.AMEM_LLM_PROVIDER || _override.provider || 'anthropic').trim().toLowerCase()
+  if (p !== 'anthropic' && p !== 'openai') {
+    // An unrecognised value silently routes to the anthropic path with the wrong
+    // model/endpoint — surface it instead of failing invisibly on every call.
+    warnOnce(`provider:${p}`, `[amem] unknown LLM provider "${p}"; falling back to anthropic`)
+  }
+  return p
+}
+
+function resolveModel(): string {
+  return (
+    process.env.AMEM_LLM_MODEL ||
+    _override.model ||
+    (resolveProvider() === 'openai' ? 'gpt-4o-mini' : 'claude-sonnet-4-6')
+  )
+}
+
+function resolveBaseURL(): string | undefined {
+  return process.env.AMEM_LLM_BASE_URL || _override.baseURL || undefined
+}
 
 // ── Clients (lazy) ────────────────────────────────────────────────────────────
 // Constructed on first use, not at import, so loading the engine never builds a
@@ -29,42 +94,46 @@ const MODEL = process.env.AMEM_LLM_MODEL ?? (PROVIDER === 'openai' ? 'gpt-4o-min
 // them run keyless.
 let _anthropic: Anthropic | null = null
 function anthropic(): Anthropic {
+  const baseURL = resolveBaseURL()
   return (_anthropic ??= new Anthropic({
     ...(process.env.AMEM_LLM_API_KEY && { apiKey: process.env.AMEM_LLM_API_KEY }),
-    ...(process.env.AMEM_LLM_BASE_URL && { baseURL: process.env.AMEM_LLM_BASE_URL }),
+    ...(baseURL && { baseURL }),
   }))
 }
 
 let _openai: OpenAI | null = null
 function openai(): OpenAI {
+  const baseURL = resolveBaseURL()
   return (_openai ??= new OpenAI({
     // AMEM_LLM_API_KEY first (engine convention), then the SDK's own
     // OPENAI_API_KEY (the standard) — passing an explicit key blocks the SDK's
     // env fallback, so read it here. Placeholder last, so keyless local servers
     // (Ollama, vLLM) still work.
     apiKey: process.env.AMEM_LLM_API_KEY || process.env.OPENAI_API_KEY || 'sk-no-key-required',
-    ...(process.env.AMEM_LLM_BASE_URL && { baseURL: process.env.AMEM_LLM_BASE_URL }),
+    ...(baseURL && { baseURL }),
   }))
 }
 
 // ── Base LLM call ─────────────────────────────────────────────────────────────
 export async function llmCall(prompt: string, maxTokens = 500): Promise<string | null> {
+  const provider = resolveProvider()
+  const model = resolveModel()
   // Gemini thinking models consume extra tokens for reasoning; scale up automatically
-  const isThinking = MODEL.includes('gemini') || MODEL.includes('pro-agent')
+  const isThinking = model.includes('gemini') || model.includes('pro-agent')
   const effectiveMaxTokens = isThinking ? Math.max(maxTokens * 8, 4000) : maxTokens
   try {
-    return PROVIDER === 'openai'
-      ? await openaiCall(prompt, effectiveMaxTokens)
-      : await anthropicCall(prompt, effectiveMaxTokens)
+    return provider === 'openai'
+      ? await openaiCall(prompt, model, effectiveMaxTokens)
+      : await anthropicCall(prompt, model, effectiveMaxTokens)
   } catch (e) {
     console.error(`[amem] LLM call failed: ${(e as Error).message}`)
     return null
   }
 }
 
-async function anthropicCall(prompt: string, maxTokens: number): Promise<string | null> {
+async function anthropicCall(prompt: string, model: string, maxTokens: number): Promise<string | null> {
   const resp = await anthropic().messages.create({
-    model: MODEL,
+    model,
     max_tokens: maxTokens,
     messages: [{ role: 'user', content: prompt }],
   })
@@ -74,15 +143,15 @@ async function anthropicCall(prompt: string, maxTokens: number): Promise<string 
   return null
 }
 
-async function openaiCall(prompt: string, maxTokens: number): Promise<string | null> {
+async function openaiCall(prompt: string, model: string, maxTokens: number): Promise<string | null> {
   // OpenAI's own reasoning models (o1/o3, gpt-5) reject `max_tokens` and require
   // `max_completion_tokens`; everything else takes `max_tokens`. Same budget for
   // our single-shot completions — only the parameter name differs. Match OpenAI
   // names narrowly: a broad `includes('reason')` would wrongly catch other
   // gateways' models (e.g. DeepSeek's `deepseek-reasoner`, which uses max_tokens).
-  const isReasoning = /^o\d/.test(MODEL) || MODEL.startsWith('gpt-5')
+  const isReasoning = /^o\d/.test(model) || model.startsWith('gpt-5')
   const resp = await openai().chat.completions.create({
-    model: MODEL,
+    model,
     ...(isReasoning ? { max_completion_tokens: maxTokens } : { max_tokens: maxTokens }),
     messages: [{ role: 'user', content: prompt }],
   })
