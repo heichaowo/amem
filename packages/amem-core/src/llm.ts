@@ -33,6 +33,9 @@ export interface LlmConfig {
   provider?: string
   model?: string
   baseURL?: string
+  /** Per-request timeout in ms for the SDK client. Guards against a slow or
+   * stuck endpoint hanging the whole addMemory pipeline. Default 30000. */
+  timeoutMs?: number
 }
 
 let _override: LlmConfig = {}
@@ -87,6 +90,14 @@ function resolveBaseURL(): string | undefined {
   return process.env.AMEM_LLM_BASE_URL || _override.baseURL || undefined
 }
 
+const DEFAULT_TIMEOUT_MS = 30_000
+function resolveTimeoutMs(): number {
+  const envVal = Number(process.env.AMEM_LLM_TIMEOUT)
+  if (Number.isFinite(envVal) && envVal > 0) return envVal
+  if (_override.timeoutMs && _override.timeoutMs > 0) return _override.timeoutMs
+  return DEFAULT_TIMEOUT_MS
+}
+
 // ── Clients (lazy) ────────────────────────────────────────────────────────────
 // Constructed on first use, not at import, so loading the engine never builds a
 // client for the provider you are not using — nor demands its API key. Local
@@ -98,6 +109,7 @@ function anthropic(): Anthropic {
   return (_anthropic ??= new Anthropic({
     ...(process.env.AMEM_LLM_API_KEY && { apiKey: process.env.AMEM_LLM_API_KEY }),
     ...(baseURL && { baseURL }),
+    timeout: resolveTimeoutMs(),
   }))
 }
 
@@ -111,6 +123,7 @@ function openai(): OpenAI {
     // (Ollama, vLLM) still work.
     apiKey: process.env.AMEM_LLM_API_KEY || process.env.OPENAI_API_KEY || 'sk-no-key-required',
     ...(baseURL && { baseURL }),
+    timeout: resolveTimeoutMs(),
   }))
 }
 
@@ -158,9 +171,25 @@ async function openaiCall(prompt: string, model: string, maxTokens: number): Pro
   return resp.choices[0]?.message?.content?.trim() ?? null
 }
 
-// ── Strip markdown fences ─────────────────────────────────────────────────────
+// ── Response cleaning + tolerant JSON parsing ─────────────────────────────────
+
+/**
+ * Remove reasoning-model scaffolding that would otherwise break JSON.parse:
+ * `<think>…</think>` blocks and chat special tokens (`<|eot_id|>`, `<|im_end|>`,
+ * …). Open-weight models reachable via any OpenAI-compatible `baseURL`
+ * (DeepSeek-R1, Qwen, LLaMA-3 through Ollama/vLLM) emit these around otherwise
+ * valid JSON. Without stripping them every JSON task silently falls back to its
+ * default on a good response — and nothing in the logs says why.
+ */
+function stripReasoning(raw: string): string {
+  return raw
+    .replace(/<think>[\s\S]*?<\/think>/gi, '')
+    .replace(/<\|(?:eot_id|im_start|im_end|begin_of_text|end_of_text|endoftext)\|>/g, '')
+    .trim()
+}
+
 function stripFences(raw: string): string {
-  raw = raw.trim()
+  raw = stripReasoning(raw)
   if (raw.startsWith('```')) {
     const lines = raw.split('\n')
     lines.shift()
@@ -176,6 +205,24 @@ function stripFences(raw: string): string {
     }
   }
   return raw
+}
+
+/**
+ * Parse a JSON object from an LLM response, tolerant of a leading preamble
+ * sentence before the object (common with smaller instruction-tuned models).
+ * Drop-in for `JSON.parse(stripFences(raw))`: it still THROWS when nothing
+ * parses, so every caller's existing try/catch → default still fires, and it
+ * returns `any` for the same reason JSON.parse does — callers guard each field.
+ */
+function parseJsonLoose(raw: string): any {
+  const cleaned = stripFences(raw)
+  try {
+    return JSON.parse(cleaned)
+  } catch (e) {
+    const m = cleaned.match(/\{[\s\S]*\}/)
+    if (m) return JSON.parse(m[0]) // may throw again → caller's catch handles it
+    throw e
+  }
 }
 
 // ── Note construction ─────────────────────────────────────────────────────────
@@ -261,7 +308,7 @@ Text: ${content}`
     }
 
   try {
-    const data = JSON.parse(stripFences(raw))
+    const data = parseJsonLoose(raw)
     const rawCategory = typeof data.category === 'string' ? data.category : 'General'
     const category: NoteCategory = VALID_CATEGORIES.has(rawCategory) ? (rawCategory as NoteCategory) : 'General'
     const note_type: 'memory' | 'knowledge' = data.note_type === 'knowledge' ? 'knowledge' : 'memory'
@@ -330,7 +377,9 @@ export async function llmCrudDecision(
   try {
     const raw = await llmCall(prompt, 400)
     if (!raw) return []
-    const match = raw.match(/\[.*\]/s)
+    // Strip reasoning scaffolding first — this path extracts the array straight
+    // from the response and would otherwise trip over a <think> block.
+    const match = stripReasoning(raw).match(/\[.*\]/s)
     if (!match) return []
     const parsed = JSON.parse(match[0])
     if (!Array.isArray(parsed)) return []
@@ -368,7 +417,7 @@ export async function llmShouldMerge(
   if (!raw) return { shouldMerge: false }
 
   try {
-    const data = JSON.parse(stripFences(raw))
+    const data = parseJsonLoose(raw)
     if (typeof data.shouldMerge !== 'boolean') return { shouldMerge: false }
     if (data.shouldMerge && typeof data.merged === 'string') {
       return { shouldMerge: true, merged: data.merged }
@@ -397,7 +446,7 @@ export async function llmEvolutionJudge(
   if (!raw) return { type: 'NEW' }
 
   try {
-    const data = JSON.parse(stripFences(raw))
+    const data = parseJsonLoose(raw)
     const type: EvolutionType = VALID_EVOLUTION_TYPES.has(data.type) ? (data.type as EvolutionType) : 'NEW'
     return {
       type,
@@ -448,7 +497,7 @@ ${linkedStr}`
   if (!raw) return { tags: null, context: null, shouldStrengthen: false, suggestedConnections: [], tagsToUpdate: [] }
 
   try {
-    const data = JSON.parse(stripFences(raw))
+    const data = parseJsonLoose(raw)
     return {
       tags: Array.isArray(data.tags) ? data.tags : null,
       context: typeof data.context === 'string' ? data.context : null,

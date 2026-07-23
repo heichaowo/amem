@@ -120,6 +120,7 @@ These environment variables override plugin defaults at runtime. Useful for test
 | `AMEM_LLM_MODEL` | `claude-sonnet-4-6` (anthropic) · `gpt-4o-mini` (openai) | LLM model used for note construction, CRUD decisions, link judgment, and memory evolution. Set to a cheaper model when running smoke tests to avoid consuming production quota. |
 | `AMEM_LLM_BASE_URL` | provider default | Override the SDK base URL. Point it at your OpenAI-compatible gateway (with `AMEM_LLM_PROVIDER=openai`) or an Anthropic proxy. |
 | `AMEM_LLM_API_KEY` | provider env | Override the API key. If unset, the Anthropic path falls back to `ANTHROPIC_API_KEY` and the OpenAI path to `OPENAI_API_KEY`; if neither is set, the OpenAI path sends a placeholder so keyless local servers (Ollama, vLLM) work. |
+| `AMEM_LLM_TIMEOUT` | `30000` | Per-request timeout in milliseconds for the LLM client. Guards against a slow or stuck endpoint (a loaded vLLM, an unreachable gateway) hanging the whole memory-write pipeline. |
 | `AMEM_COLLECTION` | `amem_notes` | Qdrant collection name. Override to use a separate collection for testing. |
 | `AMEM_REVIEW_DIR` | `process.cwd()` | Output directory for quality review batch files. |
 | `AMEM_EVO_COUNTER_PATH` | `~/.openclaw/amem_evo_cnt.json` | File path for the evolution throttle counter. |

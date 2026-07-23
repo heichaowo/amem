@@ -31,6 +31,7 @@
           "OPENAI_API_KEY",
           "AMEM_LLM_BASE_URL",
           "AMEM_LLM_MODEL",
+          "AMEM_LLM_TIMEOUT",
           "AMEM_COLLECTION",
           "AMEM_DATA_DIR",
           "AMEM_EVO_COUNTER_PATH",
