@@ -31,6 +31,10 @@
           "OPENAI_API_KEY",
           "AMEM_LLM_BASE_URL",
           "AMEM_LLM_MODEL",
+          "AMEM_LLM_STRONG_PROVIDER",
+          "AMEM_LLM_STRONG_MODEL",
+          "AMEM_LLM_STRONG_BASE_URL",
+          "AMEM_LLM_CRUD_ROLE",
           "AMEM_LLM_TIMEOUT",
           "AMEM_CRUD_UPDATE_MIN_SIM",
           "AMEM_COLLECTION",
@@ -105,6 +109,25 @@
       "llmBaseURL": {
         "type": "string",
         "description": "Base URL for the LLM endpoint, e.g. an OpenAI-compatible gateway. Overridden by AMEM_LLM_BASE_URL. API keys are read from the environment only and cannot be set here."
+      },
+      "llmStrongProvider": {
+        "type": "string",
+        "enum": ["anthropic", "openai"],
+        "description": "Optional stronger tier: request format. Falls back to llmProvider. Overridden by AMEM_LLM_STRONG_PROVIDER."
+      },
+      "llmStrongModel": {
+        "type": "string",
+        "description": "Optional stronger tier: model for the few genuinely hard judgements (merge adjudication, contradiction classification). Falls back to llmModel, so leaving it unset keeps single-model behaviour. Overridden by AMEM_LLM_STRONG_MODEL."
+      },
+      "llmStrongBaseURL": {
+        "type": "string",
+        "description": "Optional stronger tier: endpoint. Falls back to llmBaseURL. Set all three strong fields to run the tiers on entirely different backends, e.g. a local Ollama for fast and a hosted API for strong. Overridden by AMEM_LLM_STRONG_BASE_URL."
+      },
+      "llmCrudRole": {
+        "type": "string",
+        "enum": ["fast", "strong"],
+        "default": "fast",
+        "description": "Which tier the agent_end CRUD decision runs on. Defaults to fast: it runs every turn, and its destructive failure mode is handled by the update guard rather than by model tier. Overridden by AMEM_LLM_CRUD_ROLE."
       },
       "crudUpdateMinSim": {
         "type": "number",

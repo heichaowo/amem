@@ -65,11 +65,29 @@ function register(api: {
   // Story 35: let openclaw.json pick the model without setting env vars. Env
   // vars still win, and an unset key falls through to the engine's default, so
   // configuring none of these leaves behaviour exactly as it was.
-  if (pluginConfig.llmProvider || pluginConfig.llmModel || pluginConfig.llmBaseURL) {
+  // Story 42 adds the optional `strong` tier and the CRUD role on top.
+  const hasStrong = !!(pluginConfig.llmStrongProvider || pluginConfig.llmStrongModel || pluginConfig.llmStrongBaseURL)
+  if (
+    pluginConfig.llmProvider ||
+    pluginConfig.llmModel ||
+    pluginConfig.llmBaseURL ||
+    pluginConfig.llmCrudRole ||
+    hasStrong
+  ) {
     configureLlm({
       provider: pluginConfig.llmProvider,
       model: pluginConfig.llmModel,
       baseURL: pluginConfig.llmBaseURL,
+      crudRole: pluginConfig.llmCrudRole,
+      // Omit the whole block when unset so `strong` transparently falls back to
+      // `fast` — the zero-config path stays byte-for-byte today's behaviour.
+      ...(hasStrong && {
+        strong: {
+          provider: pluginConfig.llmStrongProvider,
+          model: pluginConfig.llmStrongModel,
+          baseURL: pluginConfig.llmStrongBaseURL,
+        },
+      }),
     })
   }
 

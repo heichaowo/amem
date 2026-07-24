@@ -29,6 +29,15 @@ export interface AmemPluginConfig {
   llmProvider?: string
   llmModel?: string
   llmBaseURL?: string
+  // ── Story 42: the optional `strong` tier ────────────────────────────────────
+  // Each falls back to its `fast` counterpart individually, so setting only
+  // `llmStrongModel` keeps the same provider/endpoint. Unset entirely = strong
+  // is fast, i.e. today's single-model behaviour.
+  llmStrongProvider?: string
+  llmStrongModel?: string
+  llmStrongBaseURL?: string
+  /** Which tier the agent_end CRUD decision runs on: `fast` (default) or `strong`. */
+  llmCrudRole?: 'fast' | 'strong'
   // ── Story 41: CRUD write safety ─────────────────────────────────────────────
   /** Similarity floor for accepting an LLM-chosen UPDATE target. Raise it for
    * cheaper models — a rejected update is stored as a new memory, never lost. */
