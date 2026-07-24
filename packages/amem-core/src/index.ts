@@ -58,6 +58,12 @@ export {
 // serves a note fetched by id — a REST get-by-id, a graph walk — on `canRead`.
 export { canWrite, canRead } from './auth.js'
 
+// ── CRUD write safety (Story 41) ─────────────────────────────────────────────
+// Before an LLM-chosen UPDATE overwrites a memory in place, check the
+// replacement is plausibly about that memory — a mis-picked index is the one
+// silent, unrecoverable failure in the write path.
+export { isPlausibleUpdateTarget, resolveCrudUpdateMinSim, DEFAULT_CRUD_UPDATE_MIN_SIM } from './crud-guard.js'
+
 // ── LLM (host-facing surface; the rest of the LLM layer is internal) ──────────
 // `configureLlm` lets a host choose the provider/model/endpoint after import —
 // env vars still take precedence, and there is no way to inject a key (Story 35).

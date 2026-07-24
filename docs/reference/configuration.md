@@ -28,7 +28,33 @@
 | `llmProvider` | `"anthropic" \| "openai"` | `"anthropic"` | Request format for the engine's own LLM calls. See [LLM settings](#llm-settings) below. |
 | `llmModel` | `string` | `claude-sonnet-4-6` (anthropic) · `gpt-4o-mini` (openai) | Model used for note construction, linking and evolution. |
 | `llmBaseURL` | `string` | provider default | Endpoint for LLM calls, e.g. an OpenAI-compatible gateway. |
+| `crudUpdateMinSim` | `number` | `0.35` | Similarity floor for accepting an LLM-chosen `UPDATE` target. See [CRUD update safety](#crud-update-safety). |
 | `hooks.allowConversationAccess` | `boolean` | `false` | Required for `agent_end` hook access. Set under `plugins.entries.openclaw-amem.hooks`, not under `config`. Without this, automatic memory write-back is silently blocked by OpenClaw. |
+
+### CRUD update safety
+
+When the `agent_end` hook decides an existing memory should be **updated**, it
+picks one from a numbered list of candidates. Picking the wrong number is the
+one write-path mistake that is both silent and destructive: the index is valid,
+the note is usually one you own, so nothing structural catches it — and the
+update overwrites that memory's text in place.
+
+Two guards, both on by default:
+
+- Before overwriting, the engine checks the replacement text is plausibly *about*
+  the memory it is replacing (cosine similarity ≥ `crudUpdateMinSim`). If not, the
+  fact is stored as a **new** memory instead. Nothing is lost either way —
+  scheduled consolidation can merge a duplicate later, but it cannot resurrect an
+  overwritten note.
+- The replaced text is kept in the note's `evolution_history` (`action:
+  "crud_update"`), so even an accepted overwrite stays recoverable.
+
+`crudUpdateMinSim` is a heuristic, not a tuned constant. It sits just above the
+`0.3` bar the engine uses for "related at all", because a legitimate update is
+often a correction ("drinks tea" → "switched to coffee") that is related but not
+near-identical. **Raise it when running a cheaper or smaller model** — those are
+likelier to mis-pick, and the cost of being strict is a duplicate rather than a
+destroyed memory.
 
 ### LLM settings
 
@@ -121,6 +147,7 @@ These environment variables override plugin defaults at runtime. Useful for test
 | `AMEM_LLM_BASE_URL` | provider default | Override the SDK base URL. Point it at your OpenAI-compatible gateway (with `AMEM_LLM_PROVIDER=openai`) or an Anthropic proxy. |
 | `AMEM_LLM_API_KEY` | provider env | Override the API key. If unset, the Anthropic path falls back to `ANTHROPIC_API_KEY` and the OpenAI path to `OPENAI_API_KEY`; if neither is set, the OpenAI path sends a placeholder so keyless local servers (Ollama, vLLM) work. |
 | `AMEM_LLM_TIMEOUT` | `30000` | Per-request timeout in milliseconds for the LLM client. Guards against a slow or stuck endpoint (a loaded vLLM, an unreachable gateway) hanging the whole memory-write pipeline. |
+| `AMEM_CRUD_UPDATE_MIN_SIM` | `0.35` | Similarity floor (0–1) for accepting an LLM-chosen CRUD `UPDATE` target. See [CRUD update safety](#crud-update-safety). |
 | `AMEM_COLLECTION` | `amem_notes` | Qdrant collection name. Override to use a separate collection for testing. |
 | `AMEM_REVIEW_DIR` | `process.cwd()` | Output directory for quality review batch files. |
 | `AMEM_EVO_COUNTER_PATH` | `~/.openclaw/amem_evo_cnt.json` | File path for the evolution throttle counter. |

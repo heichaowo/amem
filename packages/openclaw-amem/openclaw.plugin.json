@@ -32,6 +32,7 @@
           "AMEM_LLM_BASE_URL",
           "AMEM_LLM_MODEL",
           "AMEM_LLM_TIMEOUT",
+          "AMEM_CRUD_UPDATE_MIN_SIM",
           "AMEM_COLLECTION",
           "AMEM_DATA_DIR",
           "AMEM_EVO_COUNTER_PATH",
@@ -104,6 +105,11 @@
       "llmBaseURL": {
         "type": "string",
         "description": "Base URL for the LLM endpoint, e.g. an OpenAI-compatible gateway. Overridden by AMEM_LLM_BASE_URL. API keys are read from the environment only and cannot be set here."
+      },
+      "crudUpdateMinSim": {
+        "type": "number",
+        "default": 0.35,
+        "description": "Similarity floor (0-1) for accepting an LLM-chosen CRUD UPDATE target. Below it the fact is stored as a new memory instead of overwriting, so a mis-picked memory is never destroyed. Raise it for cheaper/weaker models. Overridden by AMEM_CRUD_UPDATE_MIN_SIM."
       },
       "agents": {
         "type": "object",

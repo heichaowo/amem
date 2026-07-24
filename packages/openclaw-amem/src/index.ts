@@ -24,6 +24,7 @@ import {
   generateReviewBatch,
   configure,
   configureLlm,
+  isPlausibleUpdateTarget,
   type AmemPluginConfig,
 } from '@heichaowo/amem-core'
 import { createHash } from 'crypto'
@@ -71,6 +72,10 @@ function register(api: {
       baseURL: pluginConfig.llmBaseURL,
     })
   }
+
+  // Story 41: similarity floor for accepting an LLM-chosen CRUD UPDATE target.
+  // Undefined here just means "use the engine default"; the env var still wins.
+  const crudUpdateMinSim = pluginConfig.crudUpdateMinSim
 
   // ── Story 32 (Issue 1): per-agent scope resolved PER CALL, not at register ────
   // The runtime per-session agentId is only present on each interface's ctx, not
@@ -466,6 +471,22 @@ function register(api: {
               if (target) {
                 const newEmbedding = await encode(op.fact)
                 const hash = createHash('md5').update(op.fact).digest('hex')
+
+                // Story 41: an in-range but WRONG index passes every structural
+                // check — it is a valid position and usually a note we own — and
+                // would overwrite an unrelated memory irreversibly. Confirm the
+                // replacement is plausibly about this note first. Failing that,
+                // the fact is not lost: it is captured as a new memory instead,
+                // and consolidation can merge it later.
+                const targetNote = await storageCtx.getNote(target.id, agentId)
+                if (!targetNote || !isPlausibleUpdateTarget(newEmbedding, targetNote.embedding, crudUpdateMinSim)) {
+                  await addMemory(op.fact, agentId, { storageCtx })
+                  logger.warn(
+                    `openclaw-amem: CRUD UPDATE on ${target.id.slice(0, 8)} looks mis-targeted — stored as a new memory instead`
+                  )
+                  continue
+                }
+
                 // Story 33: search also returns other agents' shared notes; passing
                 // agentId makes the engine refuse to write ones we do not own.
                 const ok = await storageCtx.updateNoteContent(target.id, op.fact, newEmbedding, hash, agentId)
