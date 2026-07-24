@@ -28,6 +28,10 @@
 | `llmProvider` | `"anthropic" \| "openai"` | `"anthropic"` | Request format for the engine's own LLM calls. See [LLM settings](#llm-settings) below. |
 | `llmModel` | `string` | `claude-sonnet-4-6` (anthropic) · `gpt-4o-mini` (openai) | Model used for note construction, linking and evolution. |
 | `llmBaseURL` | `string` | provider default | Endpoint for LLM calls, e.g. an OpenAI-compatible gateway. |
+| `llmStrongProvider` | `string` | falls back to `llmProvider` | Optional strong tier: request format. |
+| `llmStrongModel` | `string` | falls back to `llmModel` | Optional strong tier: model for the hard judgements. Unset = single-model behaviour. |
+| `llmStrongBaseURL` | `string` | falls back to `llmBaseURL` | Optional strong tier: endpoint. |
+| `llmCrudRole` | `"fast" \| "strong"` | `"fast"` | Which tier the `agent_end` CRUD decision runs on. |
 | `crudUpdateMinSim` | `number` | `0.35` | Similarity floor for accepting an LLM-chosen `UPDATE` target. See [CRUD update safety](#crud-update-safety). |
 | `hooks.allowConversationAccess` | `boolean` | `false` | Required for `agent_end` hook access. Set under `plugins.entries.openclaw-amem.hooks`, not under `config`. Without this, automatic memory write-back is silently blocked by OpenClaw. |
 
@@ -55,6 +59,63 @@ often a correction ("drinks tea" → "switched to coffee") that is related but n
 near-identical. **Raise it when running a cheaper or smaller model** — those are
 likelier to mis-pick, and the cost of being strict is a duplicate rather than a
 destroyed memory.
+
+### Choosing models: a fast one and (optionally) a strong one
+
+amem splits its own LLM calls into two tiers, because they are not equally hard:
+
+| Tier | What runs on it | What to configure |
+| :--- | :--- | :--- |
+| **fast** | Almost everything: extracting keywords and tags, judging whether two notes link, refreshing a note's context, and the per-turn CRUD decision | **A cheap, fast model.** Local models are fine — this is the high-frequency path |
+| **strong** | Only the genuinely hard judgements: deciding whether two memories should merge, and classifying whether new information contradicts what is stored | **A more capable model** — or nothing at all |
+
+**If you configure only one model, everything runs on it.** That is the default and
+it works. The `strong` tier is opt-in: leave it unset and `strong` simply *is*
+`fast`, exactly as before.
+
+Why the split: for extraction, a cheap model scores within ~2 points of a strong
+one — but for spotting that a new fact *contradicts* a stored one, the gap is
+large. So it is worth paying for a better model on the handful of calls that
+actually need it, and not on the thousands that do not. The reasoning and the
+evidence are in [Design Rationale](/guide/design-rationale).
+
+```json
+{
+  "plugins": {
+    "entries": {
+      "openclaw-amem": {
+        "enabled": true,
+        "config": {
+          "llmProvider": "openai",
+          "llmModel": "gpt-4o-mini",
+
+          "llmStrongModel": "gpt-4o"
+        }
+      }
+    }
+  }
+}
+```
+
+Each `strong` field falls back to its `fast` counterpart **individually**, which
+makes all three useful shapes work:
+
+- **Same provider, better model** — set only `llmStrongModel`. Most common.
+- **Two different backends** — set all three `llmStrong*` fields. This is how you
+  run a local Ollama for the fast tier and a hosted API for the strong one.
+- **One model for everything** — set none of them.
+
+::: tip Which model is "fast enough"?
+Any competent instruction-following model that reliably returns JSON. `gpt-4o-mini`,
+`claude-haiku`, `gemini-flash`, `deepseek-chat` and comparable local models are all
+in range. amem does not need a reasoning model here, and reasoning models can
+actually do *worse* inside a fixed pipeline like this one.
+:::
+
+::: warning There is no built-in strong default
+If you do not set a `strong` model, amem will not silently pick a pricier one for
+you. You have to ask for it.
+:::
 
 ### LLM settings
 
@@ -144,6 +205,10 @@ These environment variables override plugin defaults at runtime. Useful for test
 |----------|---------|-------------|
 | `AMEM_LLM_PROVIDER` | `anthropic` | Request format for LLM calls. `anthropic` uses the native Messages API; `openai` uses the Chat Completions API, which every OpenAI-compatible endpoint speaks (OpenAI, DeepSeek, OpenRouter, Groq, Together, Ollama, vLLM, LM Studio…). |
 | `AMEM_LLM_MODEL` | `claude-sonnet-4-6` (anthropic) · `gpt-4o-mini` (openai) | LLM model used for note construction, CRUD decisions, link judgment, and memory evolution. Set to a cheaper model when running smoke tests to avoid consuming production quota. |
+| `AMEM_LLM_STRONG_PROVIDER` | falls back to `AMEM_LLM_PROVIDER` | Optional strong tier: request format. See [Choosing models](#choosing-models-a-fast-one-and-optionally-a-strong-one). |
+| `AMEM_LLM_STRONG_MODEL` | falls back to `AMEM_LLM_MODEL` | Optional strong tier: model for merge adjudication and contradiction classification. Unset = everything runs on the fast model. |
+| `AMEM_LLM_STRONG_BASE_URL` | falls back to `AMEM_LLM_BASE_URL` | Optional strong tier: endpoint. Set all three to run the tiers on different backends. |
+| `AMEM_LLM_CRUD_ROLE` | `fast` | Which tier the `agent_end` CRUD decision uses (`fast` or `strong`). |
 | `AMEM_LLM_BASE_URL` | provider default | Override the SDK base URL. Point it at your OpenAI-compatible gateway (with `AMEM_LLM_PROVIDER=openai`) or an Anthropic proxy. |
 | `AMEM_LLM_API_KEY` | provider env | Override the API key. If unset, the Anthropic path falls back to `ANTHROPIC_API_KEY` and the OpenAI path to `OPENAI_API_KEY`; if neither is set, the OpenAI path sends a placeholder so keyless local servers (Ollama, vLLM) work. |
 | `AMEM_LLM_TIMEOUT` | `30000` | Per-request timeout in milliseconds for the LLM client. Guards against a slow or stuck endpoint (a loaded vLLM, an unreachable gateway) hanging the whole memory-write pipeline. |

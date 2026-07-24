@@ -23,6 +23,27 @@ Monorepo for the **amem** agentic-memory stack — memories that **evolve**, not
 
 📖 Documentation: **[amem.owo.lc](https://amem.owo.lc)** · 📄 Paper: [A-MEM (arXiv:2502.12110, NeurIPS 2025)](https://arxiv.org/abs/2502.12110)
 
+## Choosing models
+
+amem runs its own LLM calls in two tiers, because they are not equally hard:
+
+- **fast** — nearly every call (extract keywords/tags, judge links, the per-turn
+  CRUD decision). Configure a **cheap, quick** model here; local models are fine.
+- **strong** — *optional*, and only for the genuinely hard judgements (should two
+  memories merge, does this contradict what is stored). Configure a **more
+  capable** model, or skip it entirely.
+
+**Configure one model and everything runs on it** — that is the default. The
+strong tier is opt-in, and each of its fields falls back to the fast one, so you
+can set just a better model, or point the two tiers at completely different
+backends (e.g. a local Ollama for fast, a hosted API for strong).
+
+amem does **not** need a frontier model. For extraction a cheap model scores
+within ~2 points of a strong one; the gap only opens up on contradiction
+detection, which is why exactly those calls get their own tier.
+
+→ [Choosing models](https://amem.owo.lc/reference/configuration#choosing-models-a-fast-one-and-optionally-a-strong-one) · [Design Rationale](https://amem.owo.lc/guide/design-rationale)
+
 ## Develop
 
 This is a [pnpm](https://pnpm.io) workspace (Node 24).

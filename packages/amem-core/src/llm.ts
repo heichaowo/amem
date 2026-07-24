@@ -28,14 +28,44 @@ import { t } from './prompts.js'
 // out of that file and into the memory engine. Endpoint and model, yes; secrets,
 // no.
 
-/** Runtime LLM settings a host may inject. See the precedence note above. */
-export interface LlmConfig {
+/**
+ * Which tier a call runs on (Story 42).
+ *
+ * The engine's calls split cleanly by how much model capability they actually
+ * need. Published results are consistent that memory quality is mostly
+ * architecture-bound — extraction differs ~2 points between a cheap and a strong
+ * model — with ONE exception: judging whether a new fact CONTRADICTS a stored
+ * one, where the gap is large. So the frequent, easy calls run `fast`, and the
+ * rare, genuinely hard judgements can run `strong` if the operator configures
+ * one. See docs/guide/design-rationale.md for the evidence.
+ */
+export type LlmRole = 'fast' | 'strong'
+
+/** Provider/model/endpoint for one role. */
+export interface LlmRoleConfig {
   provider?: string
   model?: string
   baseURL?: string
+}
+
+/** Runtime LLM settings a host may inject. See the precedence note above. */
+export interface LlmConfig extends LlmRoleConfig {
   /** Per-request timeout in ms for the SDK client. Guards against a slow or
-   * stuck endpoint hanging the whole addMemory pipeline. Default 30000. */
+   * stuck endpoint hanging the whole addMemory pipeline. Default 30000.
+   * Shared by both roles — it is a transport concern, not a tier one. */
   timeoutMs?: number
+  /**
+   * Optional `strong` tier. Each field falls back to the `fast` value
+   * INDIVIDUALLY, so all three useful shapes work:
+   *   - only `model`      → same endpoint, better model (gpt-4o-mini → gpt-4o)
+   *   - all three         → a wholly separate backend (local Ollama + cloud Claude)
+   *   - nothing           → strong IS fast, i.e. today's single-model behaviour
+   * There is deliberately no built-in strong default: inventing one would start
+   * spending an existing user's money on a pricier model without them asking.
+   */
+  strong?: LlmRoleConfig
+  /** Which role the agent_end CRUD decision uses. Default `fast`. */
+  crudRole?: LlmRole
 }
 
 let _override: LlmConfig = {}
@@ -52,8 +82,8 @@ export function configureLlm(cfg: LlmConfig): void {
   // The clients capture the base URL and key chain at construction, so a cached
   // one would keep talking to the old endpoint. Drop them and let the next call
   // rebuild against the new settings.
-  _anthropic = null
-  _openai = null
+  _anthropicClients.clear()
+  _openaiClients.clear()
 }
 
 // Resolution runs on every call, so a bad provider value would log on every call.
@@ -68,8 +98,13 @@ function warnOnce(key: string, message: string): void {
 // here. With `??` an exported-but-empty AMEM_LLM_MODEL would outrank a perfectly
 // valid model from openclaw.json and silently win, which is a miserable thing to
 // debug.
-function resolveProvider(): string {
-  const p = (process.env.AMEM_LLM_PROVIDER || _override.provider || 'anthropic').trim().toLowerCase()
+function resolveProvider(role: LlmRole = 'fast'): string {
+  // Strong falls back to fast per field, so an operator who only names a strong
+  // MODEL keeps the same provider and endpoint — the common "same API, better
+  // model" case.
+  const raw =
+    role === 'strong' ? process.env.AMEM_LLM_STRONG_PROVIDER || _override.strong?.provider || undefined : undefined
+  const p = (raw || process.env.AMEM_LLM_PROVIDER || _override.provider || 'anthropic').trim().toLowerCase()
   if (p !== 'anthropic' && p !== 'openai') {
     // An unrecognised value silently routes to the anthropic path with the wrong
     // model/endpoint — surface it instead of failing invisibly on every call.
@@ -78,16 +113,35 @@ function resolveProvider(): string {
   return p
 }
 
-function resolveModel(): string {
+function resolveModel(role: LlmRole = 'fast'): string {
+  const strong =
+    role === 'strong' ? process.env.AMEM_LLM_STRONG_MODEL || _override.strong?.model || undefined : undefined
   return (
+    strong ||
     process.env.AMEM_LLM_MODEL ||
     _override.model ||
-    (resolveProvider() === 'openai' ? 'gpt-4o-mini' : 'claude-sonnet-4-6')
+    (resolveProvider(role) === 'openai' ? 'gpt-4o-mini' : 'claude-sonnet-4-6')
   )
 }
 
-function resolveBaseURL(): string | undefined {
-  return process.env.AMEM_LLM_BASE_URL || _override.baseURL || undefined
+function resolveBaseURL(role: LlmRole = 'fast'): string | undefined {
+  const strong =
+    role === 'strong' ? process.env.AMEM_LLM_STRONG_BASE_URL || _override.strong?.baseURL || undefined : undefined
+  return strong || process.env.AMEM_LLM_BASE_URL || _override.baseURL || undefined
+}
+
+/**
+ * Which role the agent_end CRUD decision runs on. Defaults to `fast` — see the
+ * note at its call site. An unrecognised value falls back to `fast` rather than
+ * failing, and warns once.
+ */
+function resolveCrudRole(): LlmRole {
+  const raw = (process.env.AMEM_LLM_CRUD_ROLE || _override.crudRole || 'fast').trim().toLowerCase()
+  if (raw === 'strong') return 'strong'
+  if (raw !== 'fast') {
+    warnOnce(`crudRole:${raw}`, `[amem] unknown AMEM_LLM_CRUD_ROLE "${raw}"; using fast`)
+  }
+  return 'fast'
 }
 
 const DEFAULT_TIMEOUT_MS = 30_000
@@ -98,54 +152,75 @@ function resolveTimeoutMs(): number {
   return DEFAULT_TIMEOUT_MS
 }
 
-// ── Clients (lazy) ────────────────────────────────────────────────────────────
+// ── Clients (lazy, keyed by endpoint) ─────────────────────────────────────────
 // Constructed on first use, not at import, so loading the engine never builds a
 // client for the provider you are not using — nor demands its API key. Local
 // OpenAI-compatible servers (Ollama, vLLM) accept any key, so a placeholder lets
 // them run keyless.
-let _anthropic: Anthropic | null = null
-function anthropic(): Anthropic {
-  const baseURL = resolveBaseURL()
-  return (_anthropic ??= new Anthropic({
-    ...(process.env.AMEM_LLM_API_KEY && { apiKey: process.env.AMEM_LLM_API_KEY }),
-    ...(baseURL && { baseURL }),
-    timeout: resolveTimeoutMs(),
-  }))
+//
+// Keyed by base URL rather than held as a singleton: the two roles may point at
+// different backends (a local Ollama for `fast`, a hosted API for `strong`), and
+// a single cached client would silently send one role's calls to the other's
+// endpoint.
+const _anthropicClients = new Map<string, Anthropic>()
+function anthropic(baseURL: string | undefined): Anthropic {
+  const key = baseURL ?? ''
+  let client = _anthropicClients.get(key)
+  if (!client) {
+    client = new Anthropic({
+      ...(process.env.AMEM_LLM_API_KEY && { apiKey: process.env.AMEM_LLM_API_KEY }),
+      ...(baseURL && { baseURL }),
+      timeout: resolveTimeoutMs(),
+    })
+    _anthropicClients.set(key, client)
+  }
+  return client
 }
 
-let _openai: OpenAI | null = null
-function openai(): OpenAI {
-  const baseURL = resolveBaseURL()
-  return (_openai ??= new OpenAI({
-    // AMEM_LLM_API_KEY first (engine convention), then the SDK's own
-    // OPENAI_API_KEY (the standard) — passing an explicit key blocks the SDK's
-    // env fallback, so read it here. Placeholder last, so keyless local servers
-    // (Ollama, vLLM) still work.
-    apiKey: process.env.AMEM_LLM_API_KEY || process.env.OPENAI_API_KEY || 'sk-no-key-required',
-    ...(baseURL && { baseURL }),
-    timeout: resolveTimeoutMs(),
-  }))
+const _openaiClients = new Map<string, OpenAI>()
+function openai(baseURL: string | undefined): OpenAI {
+  const key = baseURL ?? ''
+  let client = _openaiClients.get(key)
+  if (!client) {
+    client = new OpenAI({
+      // AMEM_LLM_API_KEY first (engine convention), then the SDK's own
+      // OPENAI_API_KEY (the standard) — passing an explicit key blocks the SDK's
+      // env fallback, so read it here. Placeholder last, so keyless local servers
+      // (Ollama, vLLM) still work.
+      apiKey: process.env.AMEM_LLM_API_KEY || process.env.OPENAI_API_KEY || 'sk-no-key-required',
+      ...(baseURL && { baseURL }),
+      timeout: resolveTimeoutMs(),
+    })
+    _openaiClients.set(key, client)
+  }
+  return client
 }
 
 // ── Base LLM call ─────────────────────────────────────────────────────────────
-export async function llmCall(prompt: string, maxTokens = 500): Promise<string | null> {
-  const provider = resolveProvider()
-  const model = resolveModel()
+export async function llmCall(prompt: string, maxTokens = 500, role: LlmRole = 'fast'): Promise<string | null> {
+  const provider = resolveProvider(role)
+  const model = resolveModel(role)
+  const baseURL = resolveBaseURL(role)
   // Gemini thinking models consume extra tokens for reasoning; scale up automatically
   const isThinking = model.includes('gemini') || model.includes('pro-agent')
   const effectiveMaxTokens = isThinking ? Math.max(maxTokens * 8, 4000) : maxTokens
   try {
     return provider === 'openai'
-      ? await openaiCall(prompt, model, effectiveMaxTokens)
-      : await anthropicCall(prompt, model, effectiveMaxTokens)
+      ? await openaiCall(prompt, model, effectiveMaxTokens, baseURL)
+      : await anthropicCall(prompt, model, effectiveMaxTokens, baseURL)
   } catch (e) {
     console.error(`[amem] LLM call failed: ${(e as Error).message}`)
     return null
   }
 }
 
-async function anthropicCall(prompt: string, model: string, maxTokens: number): Promise<string | null> {
-  const resp = await anthropic().messages.create({
+async function anthropicCall(
+  prompt: string,
+  model: string,
+  maxTokens: number,
+  baseURL: string | undefined
+): Promise<string | null> {
+  const resp = await anthropic(baseURL).messages.create({
     model,
     max_tokens: maxTokens,
     messages: [{ role: 'user', content: prompt }],
@@ -156,14 +231,19 @@ async function anthropicCall(prompt: string, model: string, maxTokens: number): 
   return null
 }
 
-async function openaiCall(prompt: string, model: string, maxTokens: number): Promise<string | null> {
+async function openaiCall(
+  prompt: string,
+  model: string,
+  maxTokens: number,
+  baseURL: string | undefined
+): Promise<string | null> {
   // OpenAI's own reasoning models (o1/o3, gpt-5) reject `max_tokens` and require
   // `max_completion_tokens`; everything else takes `max_tokens`. Same budget for
   // our single-shot completions — only the parameter name differs. Match OpenAI
   // names narrowly: a broad `includes('reason')` would wrongly catch other
   // gateways' models (e.g. DeepSeek's `deepseek-reasoner`, which uses max_tokens).
   const isReasoning = /^o\d/.test(model) || model.startsWith('gpt-5')
-  const resp = await openai().chat.completions.create({
+  const resp = await openai(baseURL).chat.completions.create({
     model,
     ...(isReasoning ? { max_completion_tokens: maxTokens } : { max_tokens: maxTokens }),
     messages: [{ role: 'user', content: prompt }],
@@ -375,7 +455,11 @@ export async function llmCrudDecision(
   const prompt = t.crudDecision(userText.slice(0, 500), assistantText.slice(0, 500), memoryList)
 
   try {
-    const raw = await llmCall(prompt, 400)
+    // Story 42: defaults to `fast`. It IS a contradiction judgement, but it runs
+    // on every turn, and its one destructive failure mode (overwriting the wrong
+    // memory) is already handled architecturally by the Story 41 guard rather
+    // than by buying a bigger model. Operators who want it on `strong` can say so.
+    const raw = await llmCall(prompt, 400, resolveCrudRole())
     if (!raw) return []
     // Strip reasoning scaffolding first — this path extracts the array straight
     // from the response and would otherwise trip over a <think> block.
@@ -413,7 +497,9 @@ export async function llmShouldMerge(
 ): Promise<{ shouldMerge: boolean; merged?: string }> {
   const prompt = t.shouldMerge(contentA, contentB)
 
-  const raw = await llmCall(prompt, 300)
+  // Story 42: merge adjudication is the contradiction class — the one place a
+  // stronger model measurably helps. Runs on `strong` when one is configured.
+  const raw = await llmCall(prompt, 300, 'strong')
   if (!raw) return { shouldMerge: false }
 
   try {
@@ -442,7 +528,9 @@ export async function llmEvolutionJudge(
 ): Promise<{ type: EvolutionType; mergedContent?: string }> {
   const prompt = t.evolutionJudge(oldContent, newContent)
 
-  const raw = await llmCall(prompt, 300)
+  // Story 42: EVOLVE/CONFLICT/EXPAND/NEW is literally contradiction
+  // classification — the tier-sensitive call. Runs on `strong` when configured.
+  const raw = await llmCall(prompt, 300, 'strong')
   if (!raw) return { type: 'NEW' }
 
   try {
