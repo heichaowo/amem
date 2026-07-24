@@ -21,6 +21,8 @@ export interface LocalePrompts {
   crudDecision: (userText: string, assistantText: string, memoryList: string) => string
   shouldMerge: (contentA: string, contentB: string) => string
   evolutionJudge: (oldContent: string, newContent: string) => string
+  /** Story 43: scan a BATCH of notes for mutually contradictory pairs. */
+  conflictScan: (numberedNotes: string) => string
 }
 
 // ── Locale resolution ────────────────────────────────────────────────────────
@@ -125,6 +127,27 @@ Classification rules:
   Return: {"type": "NEW"}
 
 Return only JSON, no other text.`,
+  conflictScan: (numberedNotes) => `You are auditing a person's memory store for CONTRADICTIONS.
+
+Below are numbered memories. Find pairs that CANNOT both be true of the same person at the same time.
+
+${numberedNotes}
+
+What counts as a contradiction:
+- The same attribute holding two incompatible values ("lives in Paris" vs "moved to Berlin")
+- A stated preference or constraint that a later memory violates ("is vegetarian" vs "loved the steak")
+- A fact that a later memory supersedes ("uses MySQL" vs "migrated to PostgreSQL")
+
+What does NOT count — be strict, these are the common false positives:
+- Additive facts. Two things can both be true ("has a dog named Buddy" + "adopted a second dog, Scout" is NOT a contradiction)
+- Change over time that both memories already acknowledge
+- Merely similar or related topics
+- Different contexts (likes coffee at work, tea at home)
+
+Return ONLY a JSON array. Empty array if nothing genuinely contradicts:
+[{"a": 0, "b": 3, "reason": "one short sentence naming the incompatible attribute"}]
+
+Use the numbers shown. Report a pair once. Prefer returning nothing over guessing.`,
 }
 
 // ── Chinese templates ────────────────────────────────────────────────────────
@@ -215,6 +238,27 @@ B: "用户的 VS Code 使用 One Dark Pro 主题"
   返回：{"type": "NEW"}
 
 只返回 JSON，不要任何其他文字。`,
+  conflictScan: (numberedNotes) => `你在审计一个人的记忆库，找出其中**互相矛盾**的条目。
+
+下面是编号的记忆。找出那些**不可能同时为真**的配对。
+
+${numberedNotes}
+
+算矛盾的情况：
+- 同一属性上出现互斥的值（「住在巴黎」vs「搬到了柏林」）
+- 后来的记忆违反了先前陈述的偏好或约束（「吃素」vs「那块牛排很好吃」）
+- 后来的事实取代了先前的（「用 MySQL」vs「已迁移到 PostgreSQL」）
+
+**不算**矛盾 —— 请严格，以下是最常见的误判：
+- 累加的事实。两者可以同时成立（「养了一只狗叫 Buddy」+「又领养了第二只叫 Scout」**不是**矛盾）
+- 两条记忆本身已经体现了随时间的变化
+- 只是主题相似或相关
+- 场景不同（在公司喝咖啡，在家喝茶）
+
+只返回 JSON 数组。没有真正矛盾就返回空数组：
+[{"a": 0, "b": 3, "reason": "一句话说明是哪个属性互斥"}]
+
+使用上面显示的编号。同一对只报一次。**宁可不报，也不要猜。**`,
 }
 
 // ── Export ────────────────────────────────────────────────────────────────────

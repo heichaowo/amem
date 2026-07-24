@@ -87,6 +87,12 @@ export interface MemoryNote {
   // ── Story 30: evolution mechanism ──────────────────────────────────────────
   evolution_type?: 'EVOLVE' | 'CONFLICT' | 'EXPAND' | 'NEW'
   conflict: boolean
+  // ── Story 43: which note it conflicts with, and why ─────────────────────────
+  // `conflict` alone is a bare boolean — it cannot say WHO the note contradicts,
+  // so a reviewer has to reconstruct the pair by hand. These make a conflict
+  // renderable as ONE decision instead of two disconnected entries.
+  conflicts_with?: string[]
+  conflict_reason?: string
   // ── Story 31: quality scoring ──────────────────────────────────────────────
   ephemeral: boolean // true when content contains temporal signal words
   low_quality: boolean // true when content is too short or otherwise low-quality
@@ -224,6 +230,8 @@ function noteToPoint(note: MemoryNote) {
       // 30
       evolution_type: note.evolution_type || '',
       conflict: note.conflict ?? false,
+      conflicts_with: note.conflicts_with ?? [],
+      conflict_reason: note.conflict_reason ?? '',
       // 31
       ephemeral: note.ephemeral ?? false,
       low_quality: note.low_quality ?? false,
@@ -284,6 +292,10 @@ function pointToNote(point: { id: string; payload: Record<string, unknown>; vect
         ? (p.evolution_type as 'EVOLVE' | 'CONFLICT' | 'EXPAND' | 'NEW')
         : undefined,
     conflict: p.conflict === true,
+    conflicts_with: Array.isArray(p.conflicts_with)
+      ? (p.conflicts_with as unknown[]).filter((v): v is string => typeof v === 'string')
+      : [],
+    conflict_reason: typeof p.conflict_reason === 'string' ? p.conflict_reason : '',
     // 31
     ephemeral: p.ephemeral === true,
     low_quality: p.low_quality === true,

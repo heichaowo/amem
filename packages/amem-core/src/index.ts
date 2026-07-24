@@ -58,6 +58,12 @@ export {
 // serves a note fetched by id — a REST get-by-id, a graph walk — on `canRead`.
 export { canWrite, canRead } from './auth.js'
 
+// ── Story 43: cold-layer contradiction sweep ─────────────────────────────────
+// Finds memories that contradict each other and marks the pair. Runs offline on
+// the `strong` tier, because the per-turn cheap-model CRUD decision is safe but
+// misses contradictions — this is what catches them.
+export { conflictSweep, type ConflictMode, type ConflictSweepResult } from './memory.js'
+
 // ── CRUD write safety (Story 41) ─────────────────────────────────────────────
 // Before an LLM-chosen UPDATE overwrites a memory in place, check the
 // replacement is plausibly about that memory — a mis-picked index is the one

@@ -10,7 +10,14 @@ import * as path from 'path'
 import { encode, cosineSimilarity } from './embedding.js'
 import { createStorageContext, type MemoryNote, type StorageContext } from './storage.js'
 import { canWrite } from './auth.js'
-import { llmConstructNote, llmShouldLink, llmEvolveNote, llmShouldMerge, llmEvolutionJudge } from './llm.js'
+import {
+  llmConstructNote,
+  llmShouldLink,
+  llmEvolveNote,
+  llmShouldMerge,
+  llmEvolutionJudge,
+  llmConflictScan,
+} from './llm.js'
 import { shouldRunEvolution } from './evo-counter.js'
 import { getDataDir } from './config.js'
 import { Jieba } from '@node-rs/jieba'
@@ -987,4 +994,116 @@ export async function consolidateMemories(agentId: string, logger?: any, storage
 
   log.info(`[Consolidation] Completed consolidation run. Merged ${mergedCount} pairs.`)
   return mergedCount
+}
+
+// ── Story 43: cold-layer contradiction sweep ──────────────────────────────────
+
+/**
+ * How a detected contradiction is handled.
+ *
+ * `review` (default) marks both notes and leaves the decision to a human — the
+ * safe option, because even a strong model is only around 55% accurate at
+ * spotting implicit contradictions.
+ *
+ * `auto` additionally retires the older note of each pair. It needs no human,
+ * but at that accuracy roughly two in five retirements will silence a memory
+ * that was still true. The retirement is a soft delete, so it is recoverable —
+ * but for a system answering in real time, "recoverable" only helps once someone
+ * notices. Documented as such; opt in deliberately.
+ */
+export type ConflictMode = 'review' | 'auto'
+
+function resolveConflictMode(override?: ConflictMode): ConflictMode {
+  const raw = (process.env.AMEM_CONFLICT_MODE || override || 'review').trim().toLowerCase()
+  return raw === 'auto' ? 'auto' : 'review'
+}
+
+/** How many notes go to the model in one scan. Bounds cost and prompt size. */
+const CONFLICT_BATCH_SIZE = 25
+
+export interface ConflictSweepResult {
+  scanned: number
+  pairsFound: number
+  retired: number
+}
+
+/**
+ * Find memories that contradict each other and mark them.
+ *
+ * This is the cold half of the tiering split. The per-turn CRUD decision runs on
+ * a cheap model, which is safe (the update guard stops it writing to the wrong
+ * note) but dull — it misses contradictions it should have caught. This sweep is
+ * what catches them: it runs offline, in batches, on the strong tier, and it
+ * sees far more context than any single turn does.
+ *
+ * Batches by category and hands each batch to the model whole, rather than
+ * pairing by similarity — see llmConflictScan for why that distinction is the
+ * entire point.
+ */
+export async function conflictSweep(
+  agentId: string,
+  opts?: { mode?: ConflictMode; storageCtx?: StorageContext; logger?: { info: (m: string) => void } }
+): Promise<ConflictSweepResult> {
+  const ctx = opts?.storageCtx ?? defaultCtx()
+  const mode = resolveConflictMode(opts?.mode)
+  const log = opts?.logger?.info ?? ((m: string) => console.log(m))
+
+  const raw = await ctx.listNotes(agentId)
+  // Only this agent's own episodic notes: shared notes belong to someone else,
+  // and knowledge notes are durable reference rather than claims about a person.
+  const notes = raw.filter((n) => n.agent_id !== 'shared' && n.note_type !== 'knowledge' && n.is_active !== false)
+
+  const groups = new Map<string, MemoryNote[]>()
+  for (const n of notes) {
+    const c = n.category || 'General'
+    if (!groups.has(c)) groups.set(c, [])
+    groups.get(c)!.push(n)
+  }
+
+  let pairsFound = 0
+  let retired = 0
+
+  for (const [category, groupNotes] of groups.entries()) {
+    for (let start = 0; start < groupNotes.length; start += CONFLICT_BATCH_SIZE) {
+      const batch = groupNotes.slice(start, start + CONFLICT_BATCH_SIZE)
+      if (batch.length < 2) continue
+
+      const pairs = await llmConflictScan(batch.map((n) => n.content))
+      for (const { a, b, reason } of pairs) {
+        const noteA = batch[a]
+        const noteB = batch[b]
+        if (!noteA || !noteB) continue
+        pairsFound++
+
+        // Mark BOTH sides, each pointing at the other, so the pair can be shown
+        // as one decision instead of two disconnected review entries.
+        await ctx.patchNotePayload(noteA.id, {
+          conflict: true,
+          evolution_type: 'CONFLICT',
+          conflicts_with: Array.from(new Set([...(noteA.conflicts_with ?? []), noteB.id])),
+          conflict_reason: reason,
+        })
+        await ctx.patchNotePayload(noteB.id, {
+          conflict: true,
+          evolution_type: 'CONFLICT',
+          conflicts_with: Array.from(new Set([...(noteB.conflicts_with ?? []), noteA.id])),
+          conflict_reason: reason,
+        })
+        log(`[conflict] ${category}: ${noteA.id.slice(0, 8)} ↔ ${noteB.id.slice(0, 8)} — ${reason}`)
+
+        if (mode === 'auto') {
+          // Retire the older side. Soft delete: the note and its text survive.
+          const older = Date.parse(noteA.timestamp) <= Date.parse(noteB.timestamp) ? noteA : noteB
+          const ok = await ctx.invalidateNote(older.id, agentId)
+          if (ok) {
+            retired++
+            log(`[conflict] auto-retired the older note ${older.id.slice(0, 8)}`)
+          }
+        }
+      }
+    }
+  }
+
+  log(`[conflict] scanned ${notes.length} notes, found ${pairsFound} pair(s), retired ${retired}`)
+  return { scanned: notes.length, pairsFound, retired }
 }
