@@ -155,6 +155,59 @@ export async function generateReviewBatch(agentId: string, outputPath?: string):
     lines.push(LOCALE === 'zh' ? '✅ 没有发现低质量条目。' : '✅ No low-quality items found.')
   }
 
+  // ── Story 43: conflicts render as ONE decision, not two entries ────────────
+  // A contradiction involves a PAIR. Listing each note separately forces the
+  // reviewer to find both, reconstruct that they belong together, then tick two
+  // boxes — which is the single biggest source of review friction. Shown side by
+  // side with timestamps, the reason, and a recommendation, it is one glance and
+  // one tick. Each note still gets its own entry below for the apply tool.
+  const byId = new Map(items.map((it) => [it.note.id, it.note]))
+  const renderedPairs = new Set<string>()
+  const pairLines: string[] = []
+  for (const { note } of items) {
+    for (const otherId of note.conflicts_with ?? []) {
+      const other = byId.get(otherId)
+      if (!other) continue
+      const key = note.id < otherId ? `${note.id}:${otherId}` : `${otherId}:${note.id}`
+      if (renderedPairs.has(key)) continue
+      renderedPairs.add(key)
+
+      // Newer first — the later statement is usually the current one.
+      const [newer, older] = Date.parse(note.timestamp) >= Date.parse(other.timestamp) ? [note, other] : [other, note]
+      const zh = LOCALE === 'zh'
+      pairLines.push(`### 🟠 ${zh ? '冲突' : 'CONFLICT'} | ${newer.category || 'General'}`)
+      if (newer.conflict_reason) {
+        pairLines.push(`**${zh ? '判定理由' : 'Why'}：** ${newer.conflict_reason}`)
+        pairLines.push('')
+      }
+      pairLines.push(`| | ${zh ? '时间' : 'When'} | ${zh ? '内容' : 'Content'} |`)
+      pairLines.push('| :-- | :-- | :-- |')
+      pairLines.push(`| **A** | ${newer.timestamp.slice(0, 10)} | ${newer.content.replace(/\n/g, ' ')} |`)
+      pairLines.push(`| **B** | ${older.timestamp.slice(0, 10)} | ${older.content.replace(/\n/g, ' ')} |`)
+      pairLines.push('')
+      pairLines.push(`\`A: ${newer.id}\``)
+      pairLines.push(`\`B: ${older.id}\``)
+      pairLines.push('')
+      pairLines.push(
+        zh
+          ? `- [ ] ✅ **A 是当前状态，停用 B**（推荐：A 更新）`
+          : `- [ ] ✅ **A is current — retire B** (recommended: A is newer)`
+      )
+      pairLines.push(zh ? `- [ ] ↩️ B 是当前状态，停用 A` : `- [ ] ↩️ B is current — retire A`)
+      pairLines.push(zh ? `- [ ] 🤝 两者都成立（误判）` : `- [ ] 🤝 Both hold — not a contradiction`)
+      pairLines.push('')
+      pairLines.push('---')
+      pairLines.push('')
+    }
+  }
+  if (pairLines.length > 0) {
+    lines.push(LOCALE === 'zh' ? '## 冲突（成对，一个冲突一个决定）' : '## Conflicts (paired — one decision each)')
+    lines.push('')
+    lines.push(...pairLines)
+    lines.push(LOCALE === 'zh' ? '## 其余条目' : '## Other items')
+    lines.push('')
+  }
+
   for (let i = 0; i < items.length; i++) {
     const { note, reasons } = items[i]
     const badge = severityBadge(reasons)

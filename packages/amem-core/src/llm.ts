@@ -598,3 +598,66 @@ ${linkedStr}`
     return { tags: null, context: null, shouldStrengthen: false, suggestedConnections: [], tagsToUpdate: [] }
   }
 }
+
+// ── Story 43: batched contradiction scan ──────────────────────────────────────
+
+/** One contradicting pair, as indices into the batch that was scanned. */
+export interface ConflictPair {
+  a: number
+  b: number
+  reason: string
+}
+
+/**
+ * Ask the model which memories in a batch contradict each other.
+ *
+ * Deliberately NOT pairwise. The engine's existing consolidation pairs notes by
+ * cosine similarity, which structurally cannot surface the contradictions that
+ * matter here — "is vegetarian" and "loved the steak" sit far apart in embedding
+ * space. Handing the model the whole batch at once is what lets it notice a pair
+ * that no similarity gate would have put together.
+ *
+ * Runs on the `strong` tier: this is the contradiction-judgement class, the one
+ * place where model capability measurably pays.
+ *
+ * Indices are validated against the batch size, so a hallucinated number is
+ * dropped rather than mis-targeting a note (the Story 41 lesson).
+ */
+export async function llmConflictScan(contents: string[]): Promise<ConflictPair[]> {
+  if (contents.length < 2) return []
+  const numbered = contents.map((c, i) => `[${i}] ${c}`).join('\n')
+
+  try {
+    const raw = await llmCall(t.conflictScan(numbered), 600, 'strong')
+    if (!raw) return []
+    const cleaned = stripReasoning(raw)
+    const match = cleaned.match(/\[[\s\S]*\]/)
+    if (!match) return []
+    const parsed = JSON.parse(match[0])
+    if (!Array.isArray(parsed)) return []
+
+    const pairs: ConflictPair[] = []
+    const seen = new Set<string>()
+    for (const item of parsed) {
+      if (!item || typeof item !== 'object') continue
+      const { a, b } = item as { a: unknown; b: unknown }
+      if (typeof a !== 'number' || typeof b !== 'number') continue
+      if (!Number.isInteger(a) || !Number.isInteger(b)) continue
+      // A hallucinated index must never reach a note. Bounds-check both.
+      if (a < 0 || b < 0 || a >= contents.length || b >= contents.length) continue
+      if (a === b) continue
+      const key = a < b ? `${a}:${b}` : `${b}:${a}`
+      if (seen.has(key)) continue
+      seen.add(key)
+      pairs.push({
+        a,
+        b,
+        reason: typeof (item as { reason?: unknown }).reason === 'string' ? (item as { reason: string }).reason : '',
+      })
+    }
+    return pairs
+  } catch (e) {
+    console.error(`[amem] llmConflictScan failed: ${(e as Error).message}`)
+    return []
+  }
+}

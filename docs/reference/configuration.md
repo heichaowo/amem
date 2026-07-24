@@ -60,6 +60,35 @@ near-identical. **Raise it when running a cheaper or smaller model** — those a
 likelier to mis-pick, and the cost of being strict is a duplicate rather than a
 destroyed memory.
 
+### Contradiction sweep
+
+The per-turn CRUD decision runs on the fast model. That is safe — the update
+guard stops it writing to the wrong memory — but **dull**: it misses
+contradictions it should have caught. A cheap model scores around 8.7% at
+noticing that a stored memory has quietly stopped being true.
+
+So a sweep runs offline, in batches, on the **strong** tier. It hands the model a
+whole batch of memories at once rather than comparing them pairwise, because the
+contradictions that matter are often *far apart* in meaning — "is vegetarian" and
+"loved the steak" would never be paired by a similarity check. When it finds a
+pair, it marks **both** notes with a pointer to the other and the reason, so the
+conflict can be reviewed as **one decision** rather than two disconnected entries.
+
+| `AMEM_CONFLICT_MODE` | What happens |
+| :--- | :--- |
+| `review` *(default)* | Both notes are flagged and appear in the quality review batch. Nothing is removed. You decide. |
+| `auto` | As above, **and** the older note of each pair is retired automatically. |
+
+::: danger Read this before enabling `auto`
+Even a strong model is only around **55%** accurate at spotting implicit
+contradictions. In `auto` mode that means roughly **two in five retirements will
+silence a memory that was still true**.
+
+The retirement is a soft delete — the note and its text survive and can be
+restored — but for a system answering in real time, "recoverable" only helps once
+somebody notices. `review` is the default for this reason.
+:::
+
 ### Choosing models: a fast one and (optionally) a strong one
 
 amem splits its own LLM calls into two tiers, because they are not equally hard:
@@ -208,6 +237,7 @@ These environment variables override plugin defaults at runtime. Useful for test
 | `AMEM_LLM_STRONG_PROVIDER` | falls back to `AMEM_LLM_PROVIDER` | Optional strong tier: request format. See [Choosing models](#choosing-models-a-fast-one-and-optionally-a-strong-one). |
 | `AMEM_LLM_STRONG_MODEL` | falls back to `AMEM_LLM_MODEL` | Optional strong tier: model for merge adjudication and contradiction classification. Unset = everything runs on the fast model. |
 | `AMEM_LLM_STRONG_BASE_URL` | falls back to `AMEM_LLM_BASE_URL` | Optional strong tier: endpoint. Set all three to run the tiers on different backends. |
+| `AMEM_CONFLICT_MODE` | `review` | What the contradiction sweep does with a pair it finds: `review` (mark only) or `auto` (also retire the older one). See [Contradiction sweep](#contradiction-sweep). |
 | `AMEM_LLM_CRUD_ROLE` | `fast` | Which tier the `agent_end` CRUD decision uses (`fast` or `strong`). |
 | `AMEM_LLM_BASE_URL` | provider default | Override the SDK base URL. Point it at your OpenAI-compatible gateway (with `AMEM_LLM_PROVIDER=openai`) or an Anthropic proxy. |
 | `AMEM_LLM_API_KEY` | provider env | Override the API key. If unset, the Anthropic path falls back to `ANTHROPIC_API_KEY` and the OpenAI path to `OPENAI_API_KEY`; if neither is set, the OpenAI path sends a placeholder so keyless local servers (Ollama, vLLM) work. |
