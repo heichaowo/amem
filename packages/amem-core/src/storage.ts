@@ -29,6 +29,10 @@ export interface AmemPluginConfig {
   llmProvider?: string
   llmModel?: string
   llmBaseURL?: string
+  // ── Story 41: CRUD write safety ─────────────────────────────────────────────
+  /** Similarity floor for accepting an LLM-chosen UPDATE target. Raise it for
+   * cheaper models — a rejected update is stored as a new memory, never lost. */
+  crudUpdateMinSim?: number
 }
 
 /** One entry in a note's evolution history (Story 13-B) */
@@ -39,7 +43,9 @@ export interface EvolutionEntry {
   newContext: string
   oldTags: string[]
   newTags: string[]
-  action?: 'update_neighbor' | 'strengthen' | 'consolidate'
+  action?: 'update_neighbor' | 'strengthen' | 'consolidate' | 'crud_update'
+  /** Story 41: the content this entry replaced, so an overwrite stays recoverable. */
+  oldContent?: string
   suggestedConnections?: string[]
   tagsUpdated?: string[]
 }
@@ -400,15 +406,39 @@ function makeCrud(collectionName: string, modeBIsolated = false) {
       callerAgentId?: string
     ): Promise<boolean> {
       await ensureCollection(col)
+      let existing: MemoryNote | null = null
       if (callerAgentId !== undefined) {
-        const existing = await this.getNote(id)
+        existing = await this.getNote(id)
         if (existing && !canWrite(existing, callerAgentId)) return false
       }
       await qdrant('PUT', `/collections/${col}/points/vectors?wait=true`, {
         points: [{ id, vector: embedding }],
       })
+      const payload: Record<string, unknown> = { content, hash }
+      // Story 41: this overwrite is destructive. Keep the replaced text so a
+      // mis-targeted UPDATE stays recoverable — the guard has false negatives,
+      // and this is the last line before content is gone for good. Only done
+      // when we already fetched the note (the caller-scoped CRUD path); the
+      // dedup and merge paths pass no callerAgentId and are unchanged, so they
+      // pay no extra read.
+      if (existing) {
+        const history: EvolutionEntry[] = [
+          ...(existing.evolution_history ?? []),
+          {
+            triggeredBy: '',
+            triggeredAt: new Date().toISOString(),
+            oldContext: existing.context,
+            newContext: existing.context,
+            oldTags: existing.tags,
+            newTags: existing.tags,
+            action: 'crud_update',
+            oldContent: existing.content,
+          },
+        ]
+        payload.evolution_history = JSON.stringify(history)
+      }
       await qdrant('POST', `/collections/${col}/points/payload?wait=true`, {
-        payload: { content, hash },
+        payload,
         points: [id],
       })
       return true

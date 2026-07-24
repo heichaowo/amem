@@ -64,4 +64,23 @@ describe('memory pipeline (integration — requires Qdrant on :6333)', () => {
     const devResults = await searchMemory('zephyrquux', 5, 'dev', { storageCtx: ctx })
     expect(devResults).toHaveLength(0)
   })
+
+  // Story 41: an accepted overwrite must stay recoverable. The similarity guard
+  // has false negatives, so this is the last line before content is gone.
+  it('keeps the replaced text in evolution_history on a caller-scoped update', async () => {
+    const ctx = createStorageContext(collection)
+    const original = 'the original wording about quibblewick'
+    const id = await addMemory(original, 'main', { storageCtx: ctx })
+
+    const replacement = 'the revised wording about quibblewick'
+    const ok = await ctx.updateNoteContent(id, replacement, fakeEncode(replacement), 'newhash', 'main')
+    expect(ok).toBe(true)
+
+    const note = await ctx.getNote(id)
+    expect(note?.content).toBe(replacement)
+
+    const snapshot = note?.evolution_history?.find((e) => e.action === 'crud_update')
+    expect(snapshot).toBeDefined()
+    expect(snapshot?.oldContent).toBe(original)
+  })
 })
