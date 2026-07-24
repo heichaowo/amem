@@ -38,6 +38,7 @@ export default defineConfig({
           { text: 'Memory Evolution & Quality', link: '/guide/evolution' },
           { text: 'Agent Isolation', link: '/guide/agent-isolation' },
           { text: 'A-MEM vs Traditional RAG', link: '/guide/comparison' },
+          { text: 'Design Rationale', link: '/guide/design-rationale' },
         ],
       },
       {
