@@ -31,7 +31,13 @@ jobs:
           set -uo pipefail
           PKG=openclaw-amem
 
-          NPM_LATEST=$(npm view "$PKG" version 2>/dev/null)
+          # Every lookup below is `|| true`. GitHub runs this with `bash -e`, and
+          # `pipefail` makes a failing pipeline fail its assignment — which would
+          # abort the script BEFORE the empty-checks that are meant to downgrade a
+          # lookup failure to a skip. Without `|| true` those guards are dead code
+          # and any hiccup reports as a red build. (That is exactly what happened:
+          # this job hard-failed daily while npm and ClawHub were in sync.)
+          NPM_LATEST=$(npm view "$PKG" version 2>/dev/null) || true
           if [ -z "$NPM_LATEST" ]; then
             echo "::warning::could not read $PKG version from npm — skipping this run"
             exit 0
@@ -39,15 +45,19 @@ jobs:
           # `npm view time.<ver>` splits on the dots in the version, so read the
           # whole time map and pull the version's ISO timestamp out of it.
           NPM_TIME=$(npm view "$PKG" time --json 2>/dev/null \
-            | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{try{console.log(JSON.parse(s)[process.argv[1]]||'')}catch{console.log('')}})" "$NPM_LATEST")
+            | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{try{console.log(JSON.parse(s)[process.argv[1]]||'')}catch{console.log('')}})" "$NPM_LATEST") || true
           if [ -z "$NPM_TIME" ]; then
             echo "::warning::could not read $PKG@$NPM_LATEST publish time from npm — skipping this run"
             exit 0
           fi
 
-          npm i -g clawhub@0.23.1 >/dev/null 2>&1
-          CLAW_LATEST=$(clawhub package moderation-status "$PKG" --json 2>/dev/null \
-            | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{try{console.log(JSON.parse(s).latestRelease?.version||'')}catch{console.log('')}})")
+          npm i -g clawhub@0.23.1 >/dev/null 2>&1 || true
+          # `package inspect` is readable ANONYMOUSLY; `moderation-status` requires
+          # `clawhub login` and exits 1 on a runner, which is why this job could
+          # never have worked. Both report the last scanned/servable version, which
+          # is the number this check is about.
+          CLAW_LATEST=$(clawhub package inspect "$PKG" --json 2>/dev/null \
+            | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{try{console.log(JSON.parse(s).package?.latestVersion||'')}catch{console.log('')}})") || true
           if [ -z "$CLAW_LATEST" ]; then
             echo "::warning::could not read $PKG latest from ClawHub — skipping this run"
             exit 0
